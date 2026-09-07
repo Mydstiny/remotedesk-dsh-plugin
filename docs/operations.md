@@ -45,7 +45,7 @@ node bin/remotedesk-dsh.mjs project-add --state "$STATE" --id demo --path "/abso
 node bin/remotedesk-dsh.mjs plugin-install --state "$STATE" --package "/absolute/path/remotedesk-dsh-plugin-0.2.0.tgz" --profile remotedesk
 ```
 
-此命令调用 `dsh plugin --profile remotedesk add <本地包>`，将包按 SHA256 缓存到私有 state/packages 后安装，并写入 `launch.json`。同一路径的升级包也不会误用原生包管理器的旧缓存。默认新建 remotedesk profile，使用该 profile 的 provider 设置。已有非本插件创建的自定义 profile 会被拒绝，请选一个新名字；本插件之前创建的 profile 可以继续升级。需要在 DSH 网页查看同一批会话时，明确指定已有 `--profile web`；先停止该 profile 的现有进程，再从本插件 `serve` 启动，避免同一 profile 重复运行。启动自有 profile 时，CLI 只为这一次进程添加 remote-only overlay，禁用全局 agent-instructions；不会改写已有 profile 文件。web profile 的本地 standard/PTC preset 保留各自的指令和工具，RemoteDesk 只限制自己创建的 Agent。如果全局 agent-instructions 仍被启用，插件拒绝监听。远程 Agent 通过容器内的只读工具读取所选项目指令。仅装 bundle 而未设置 state 时插件保持未监听状态。
+此命令调用 `dsh plugin --profile remotedesk add <本地包>`，将包按 SHA256 缓存到私有 state/packages 和该 profile 的 remotedesk-packages 后安装，并写入 `launch.json`。同一路径的升级包也不会误用原生包管理器的旧缓存。原生安装只接收固定格式的相对包路径，Windows 用户目录中的空格和 & 不会进入命令文本。默认新建 remotedesk profile，使用该 profile 的 provider 设置。已有非本插件创建的自定义 profile 会被拒绝，请选一个新名字；本插件之前创建的 profile 可以继续升级。需要在 DSH 网页查看同一批会话时，明确指定已有 `--profile web`；先停止该 profile 的现有进程，再从本插件 `serve` 启动，避免同一 profile 重复运行。启动自有 profile 时，CLI 只为这一次进程添加 remote-only overlay，禁用全局 agent-instructions；不会改写已有 profile 文件。web profile 的本地 standard/PTC preset 保留各自的指令和工具，RemoteDesk 只限制自己创建的 Agent。如果全局 agent-instructions 仍被启用，插件拒绝监听。远程 Agent 通过容器内的只读工具读取所选项目指令。仅装 bundle 而未设置 state 时插件保持未监听状态。
 
 升级时先停止服务，用新 tarball 再运行 `plugin-install`，并保留 `launch.json`。卸载 bundle 的原生命令是 `dsh plugin --profile <name> remove @remotedesk/dsh-plugin`；不要删除整个 profile。
 

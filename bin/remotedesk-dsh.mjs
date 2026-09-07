@@ -5,7 +5,7 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, resolve } from 'node:path';
-import { readFile, writeFile, stat, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, stat, lstat, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { main } from '@remotedesk/bridge-core/cli';
 import { requireThat } from '@remotedesk/bridge-core/errors';
@@ -90,10 +90,33 @@ await main({
             if (error.code !== 'ENOENT') throw error;
           }
           const launch = await prepareProfileInstall(state, { profile, packageSha256, webPort });
+          const profileCache = join(launch.profilePath, 'remotedesk-packages');
+          await mkdir(profileCache, { recursive: true, mode: 0o700 });
+          requireThat(
+            (await lstat(profileCache)).isDirectory(),
+            'PROFILE_CACHE_DIRECTORY_REQUIRED',
+          );
+          const localArchive = join(profileCache, packageSha256 + '.tgz');
+          try {
+            await writeFile(localArchive, bytes, { flag: 'wx', mode: 0o600 });
+          } catch (error) {
+            if (error.code !== 'EEXIST') throw error;
+            requireThat((await lstat(localArchive)).isFile(), 'PROFILE_CACHE_FILE_REQUIRED');
+            requireThat(
+              createHash('sha256')
+                .update(await readFile(localArchive))
+                .digest('hex') === packageSha256,
+              'CACHED_PACKAGE_CHANGED',
+            );
+          }
+          // Upstream DSH uses shell:true on Windows. This fixed relative spec has
+          // no shell syntax and is resolved by pnpm from the profile cwd. Do not
+          // prefix it with ./, which upstream would expand to an absolute path.
+          const nativeSpec = 'file:remotedesk-packages/' + packageSha256 + '.tgz';
           await new Promise((resolve, reject) => {
             const child = spawn(
               process.execPath,
-              [bin, 'plugin', '--profile', profile, 'add', cached],
+              [bin, 'plugin', '--profile', profile, 'add', nativeSpec],
               {
                 shell: false,
                 stdio: 'inherit',
