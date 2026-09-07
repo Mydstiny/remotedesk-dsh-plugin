@@ -1,19 +1,30 @@
 {
   "schemaVersion": 1,
-  "adapterVersion": "0.1.0-alpha.1",
-  "stage": "AI0",
-  "cliVersions": ["0.1.0-rc.6"],
+  "adapterVersion": "0.2.0",
+  "stage": "host-v1",
+  "cliVersions": ["0.1.2-rc.1"],
   "components": {
-    "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-base": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-agent": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-session": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-user-approval": "0.1.0-rc.8",
-    "@deepseek-ai/dsh-user-questions": "0.1.0-rc.8"
+    "@deepseek-ai/cordis": "4.0.2",
+    "@deepseek-ai/dsh-base": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-session": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-user-approval": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-user-questions": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-agent-loop": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-projection": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-attachment-local": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-agent-default-model": "0.1.2-rc.1"
   },
   "testedPlatform": "darwin-arm64",
   "testedNode": "26.4.0",
-  "userQuestionMode": "single-provider-do-not-register",
-  "remoteAccess": false,
-  "entitlement": "pro.lifetime"
+  "userQuestionMode": "remote-owned-tool-preserves-host-waterfall",
+  "remoteAccess": true,
+  "entitlement": "pro.lifetime",
+  "platforms": ["darwin", "linux", "win32"],
+  "protocolMajor": 1,
+  "wireProtocolFrozen": true
 }
