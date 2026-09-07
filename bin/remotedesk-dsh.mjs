@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { prepareProfileInstall, requirePnpm } from '../src/profile-install.mjs';
+import { withLifecycleLock } from '@remotedesk/bridge-core/lifecycle-lock';
+import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { readFile, writeFile, stat, mkdir } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -20,6 +22,11 @@ await main({
     const bin = await executable();
     process.env.REMOTEDESK_DSH_STATE = state;
     requireThat(launch.ownedProfile === true || launch.profile === 'web', 'DSH_PROFILE_NOT_OWNED');
+    requireThat(
+      launch.profilePath ===
+        resolve(process.env.DSH_HOME || join(homedir(), '.dsh'), 'profiles', launch.profile),
+      'DSH_PROFILE_HOME_CHANGED',
+    );
     process.argv = [process.execPath, bin, '--profile', launch.profile];
     if (launch.ownedProfile)
       process.argv.push(
@@ -47,23 +54,8 @@ await main({
       archive.endsWith('.tgz') && (await stat(archive)).isFile(),
       'LOCAL_PACKAGE_REQUIRED',
     );
-    let ownedProfile = false;
-    const profilePath = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'profiles', profile);
-    try {
-      await stat(profilePath);
-      const old = JSON.parse(
-        await readFile(join(state, 'launch.json'), 'utf8').catch((e) => {
-          if (e.code === 'ENOENT') return '{}';
-          throw e;
-        }),
-      );
-      ownedProfile = old.profile === profile && old.ownedProfile === true;
-      requireThat(profile === 'web' || ownedProfile, 'DSH_EXISTING_PROFILE_USE_NEW_NAME_OR_WEB');
-    } catch (e) {
-      if (e.code === 'ENOENT') ownedProfile = true;
-      else throw e;
-    }
     requireThat((await doctor()).status === 'ok', 'DSH_RUNTIME_UNVERIFIED');
+    await requirePnpm();
     const bin = await executable();
     const bytes = await readFile(archive);
     requireThat(bytes.length <= 16000000, 'PACKAGE_TOO_LARGE');
@@ -82,30 +74,42 @@ await main({
         'CACHED_PACKAGE_CHANGED',
       );
     }
-    await new Promise((resolve, reject) => {
-      const child = spawn(process.execPath, [bin, 'plugin', '--profile', profile, 'add', cached], {
-        shell: false,
-        stdio: 'inherit',
-        windowsHide: true,
-      });
-      child.once('error', reject);
-      child.once('exit', (code) =>
-        code === 0 ? resolve() : reject(new Error('PLUGIN_INSTALL_FAILED')),
-      );
-    });
     const webPort = o['web-port'] === undefined ? undefined : Number(o['web-port']);
     requireThat(
       webPort === undefined || (Number.isInteger(webPort) && webPort > 0 && webPort < 65536),
       'WEB_PORT_INVALID',
     );
-    await writeFile(
-      join(state, 'launch.json'),
-      JSON.stringify(
-        { profile, ownedProfile, packageSha256, ...(webPort !== undefined ? { webPort } : {}) },
-        null,
-        2,
-      ) + '\n',
-      { mode: 0o600 },
+    await withLifecycleLock(
+      state,
+      () =>
+        withLifecycleLock(state, async () => {
+          try {
+            await stat(join(state, 'server.lock'));
+            requireThat(false, 'STOP_OR_RECOVER_BEFORE_INSTALL');
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+          }
+          const launch = await prepareProfileInstall(state, { profile, packageSha256, webPort });
+          await new Promise((resolve, reject) => {
+            const child = spawn(
+              process.execPath,
+              [bin, 'plugin', '--profile', profile, 'add', cached],
+              {
+                shell: false,
+                stdio: 'inherit',
+                windowsHide: true,
+              },
+            );
+            child.once('error', reject);
+            child.once('exit', (code) =>
+              code === 0 ? resolve() : reject(new Error('PLUGIN_INSTALL_FAILED')),
+            );
+          });
+          await writeFile(join(state, 'launch.json'), JSON.stringify(launch, null, 2) + '\n', {
+            mode: 0o600,
+          });
+        }),
+      'installation',
     );
     console.log(JSON.stringify({ installed: true, profile, restartRequired: true }));
     return true;

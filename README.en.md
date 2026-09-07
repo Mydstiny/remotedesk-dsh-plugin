@@ -2,7 +2,7 @@
 
 Version **0.2.0** provides an authenticated remote AI bridge for Windows, macOS and Linux: project-scoped pairing, session history and SSE, turns/steering/cancellation, one-command approvals, questions, diffs and attachments. HarmonyOS UI and RustDesk tunnel integration are separate future application work. A working reference CLI client is included.
 
-Requirements: Node **22.16+**, OpenSSL 3, DSH **0.1.2-rc.1**, a local Docker daemon running Linux containers, and an existing host model-provider configuration. Docker and the upstream engine are external installations. Unknown upstream versions fail closed.
+Requirements: Node **22.16+**, OpenSSL 3, pnpm (native plugin installation; CI uses 11.21.0), DSH **0.1.2-rc.1**, a local Docker daemon running Linux containers, and an existing host model-provider configuration. Docker and the upstream engine are external installations. Unknown upstream versions fail closed.
 
 All remote filesystem/command tools execute as a non-root user inside a fixed Docker image with only the selected project mounted, no network and a read-only root filesystem. Each command requires controller approval; bounded file reads use a read-only mount. The complete selected project, including .git and any secrets in it, is in scope. Provider credentials stay with the native host engine; model requests may contain authorized project data.
 

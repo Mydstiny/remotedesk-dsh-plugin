@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts
-      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1
+      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 pnpm@11.21.0
       - run: node bin/remotedesk-dsh.mjs doctor --json
       - run: node test/agent-loop-runtime.mjs
   docker-runtime:
@@ -41,7 +41,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts
-      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1
+      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 pnpm@11.21.0
       - name: Build the pinned project image
         shell: bash
         run: |

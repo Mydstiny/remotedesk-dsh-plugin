@@ -2,7 +2,7 @@
 
 可直接复制下面的任务，补充安装主机、版本、项目和监听地址：
 
-> 请将 Mydstiny/remotedesk-dsh-plugin 的指定 Release 0.2.0 部署到这台电脑。先阅读固定 commit 下的 README、SECURITY、compatibility.json 与 docs/operations.md，核对 Release 文件 SHA256SUMS；不要运行浮动远程 shell。使用当前用户的现有 DSH provider 登录，不读取、打印或复制账号密钥。安装持久版本目录，核验 Node/OpenSSL/DSH/本机 Docker Linux 容器，将我选定的项目与固定镜像加入独立私有 state。先前台启动并配对参考客户端，验证项目列表、发消息、审批接受/拒绝、取消和停启恢复，再安装用户后台服务。完成后提供主机端点、CA 指纹的可信核对方式、已授权项目、版本、命令与验收结果。保留项目、原有本地会话、模型配置及旧版本回滚材料。没有授权的防火墙/公网/账号改变先说明具体必要性；不暴露原生引擎端口。不在本任务里开发鸿蒙端或宣称手机已验收。
+> 请将 Mydstiny/remotedesk-dsh-plugin 的指定 Release 0.2.0 部署到这台电脑。先阅读固定 commit 下的 README、SECURITY、compatibility.json 与 docs/operations.md，核对 Release 文件 SHA256SUMS；不要运行浮动远程 shell。使用当前用户的现有 DSH provider 登录，不读取、打印或复制账号密钥。安装持久版本目录，核验 Node/OpenSSL/pnpm/DSH/本机 Docker Linux 容器，将我选定的项目与固定镜像加入独立私有 state。先前台启动并配对参考客户端，验证项目列表、发消息、审批接受/拒绝、取消和停启恢复，再安装用户后台服务。完成后提供主机端点、CA 指纹的可信核对方式、已授权项目、版本、命令与验收结果。保留项目、原有本地会话、模型配置及旧版本回滚材料。没有授权的防火墙/公网/账号改变先说明具体必要性；不暴露原生引擎端口。不在本任务里开发鸿蒙端或宣称手机已验收。
 
 ## Agent 执行清单
 

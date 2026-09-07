@@ -4,7 +4,7 @@
 
 鸿蒙客户端和 RustDesk 隧道接入由 [RemoteDeskHarmonyOS](https://github.com/Mydstiny/RemoteDeskHarmonyOS) 后续实现。本仓库已经提供可工作的协议服务与命令行参考客户端；手机 App 的连接界面不包含在此版本中。App 规划复用 `pro.lifetime`，电脑端不伪造购买凭据或单独收费解锁。
 
-需要 Node.js **22.16+**（CI 覆盖 22/24/26）、OpenSSL 3、DSH **0.1.2-rc.1**、本机 Docker 的 Linux 容器，以及现有 DSH 模型 provider；默认安装到独立 remotedesk profile，可明确选择已有 web profile。引擎和 Docker 不随插件打包。未知引擎版本会拒绝启动，避免内部接口漂移。
+需要 Node.js **22.16+**（CI 覆盖 22/24/26）、OpenSSL 3、pnpm（原生插件安装需要，CI 使用 11.21.0）、DSH **0.1.2-rc.1**、本机 Docker 的 Linux 容器，以及现有 DSH 模型 provider；默认安装到独立 remotedesk profile，可明确选择已有 web profile。引擎和 Docker 不随插件打包。未知引擎版本会拒绝启动，避免内部接口漂移。
 
 远程工具只可在选定项目的 Docker 容器执行：非 root、无网络、只挂载该项目，写命令逐次审批。可读取的项目文件及命令输出会发送给主机配置的模型。请选择允许处理的项目；项目目录含 `.git` 及其内部所有文件。详见 [安全边界](SECURITY.md)。
 

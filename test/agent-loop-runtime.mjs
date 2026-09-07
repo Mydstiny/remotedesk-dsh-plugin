@@ -1,3 +1,4 @@
+import { Fault } from '@remotedesk/bridge-core/errors';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -15,6 +16,7 @@ const load = async (name) => import(pathToFileURL(require.resolve(name)).href);
 const { Context } = await load('@deepseek-ai/cordis');
 const { LlmAdapter } = await load('@deepseek-ai/dsh-llm');
 const ctx = new Context();
+let cleanupFailure = false;
 let selected = 'text',
   toolCalls = 0,
   hostCalls = 0,
@@ -75,6 +77,7 @@ const executor = {
   async check() {},
   async run() {
     toolCalls++;
+    if (cleanupFailure) throw new Fault('DOCKER_CLEANUP_UNCONFIRMED');
     return { exitCode: 0, stdout: 'fixture', stderr: '' };
   },
 };
@@ -128,7 +131,7 @@ try {
   adapter = new DshAdapter(ctx, { executor });
   adapter.bind({
     projects: [{ id: 'p', path: workspace, provider: 'fixture', model: 'fixture' }],
-    emit: (id, e) => events.push(e),
+    emit: (id, e) => events.push({ ...e, sessionId: id }),
     ask: async (id, r) =>
       r.kind === 'question'
         ? { text: 'remote answer' }
@@ -174,12 +177,27 @@ try {
   adapter = new DshAdapter(ctx, { executor });
   adapter.bind({
     projects: [{ id: 'p', path: workspace, provider: 'fixture', model: 'fixture' }],
-    emit: (id, e) => events.push(e),
-    ask: async () => ({ decision: 'decline' }),
+    emit: (id, e) => events.push({ ...e, sessionId: id }),
+    ask: async () => ({ decision: cleanupFailure ? 'accept' : 'decline' }),
   });
   await adapter.resume(s);
   const after = await adapter.read(s);
   assert.ok(after.events.length >= before.events.length);
+  const blocked = { id: 'remote-cleanup-fixture', project: 'p' };
+  await adapter.create(blocked);
+  cleanupFailure = true;
+  selected = 'exec';
+  await adapter.start(blocked, 'Fixture cleanup failure.');
+  await ctx.agents.get(blocked.id).whenIdle();
+  await new Promise((r) => setImmediate(r));
+  assert.equal((await adapter.read(blocked)).status, 'blocked');
+  await assert.rejects(adapter.cancel(blocked), /WORKSPACE_CLEANUP_UNCONFIRMED/);
+  await assert.rejects(adapter.start(blocked, 'Must stay blocked'), /TURN_ALREADY_RUNNING/);
+  assert.equal(
+    events.some((e) => e.type === 'execution.idle' && e.sessionId === blocked.id),
+    false,
+  );
+  cleanupFailure = false;
   await adapter.close();
   originalQuestions();
   console.log(

@@ -1,3 +1,4 @@
+import { ExecutionFence } from '@remotedesk/bridge-core/execution-fence';
 import { assertProfile } from './profile-policy.mjs';
 import { randomUUID } from 'node:crypto';
 import { Fault, requireThat, fields, string } from '@remotedesk/bridge-core/errors';
@@ -39,6 +40,7 @@ export class DshAdapter {
   bind(core) {
     this.core = core;
     this.executor = this.customExecutor ?? new DockerExecutor(core.storage);
+    this.executions = new ExecutionFence(this.executor);
     this.disposers.push(
       this.ctx.on('session/event', (session, event) => {
         const h = this.handles.get(session.id);
@@ -105,15 +107,17 @@ export class DshAdapter {
           parameters: tool.inputSchema,
           output,
           execute: (args, exec) =>
-            executeWorkspaceTool({
-              executor: this.executor,
-              core: this.core,
-              session: s,
-              project: p,
-              name: tool.name,
-              args,
-              signal: exec.signal,
-            }),
+            this.executions.run(s.id, p, () =>
+              executeWorkspaceTool({
+                executor: this.executor,
+                core: this.core,
+                session: s,
+                project: p,
+                name: tool.name,
+                args,
+                signal: exec.signal,
+              }),
+            ),
         });
       return {
         commit: () => {
@@ -189,7 +193,7 @@ export class DshAdapter {
       .filter((e) => e.seq >= from && PUBLIC_EVENT.test(e.type));
     const events = rows.slice(0, 200);
     return {
-      status: agent.status,
+      status: this.runs.has(s.id) && agent.status === 'idle' ? 'blocked' : agent.status,
       model: s.model,
       provider: s.provider,
       inputModalities: s.inputModalities,
@@ -199,6 +203,7 @@ export class DshAdapter {
   }
   async start(s, text, attachments = []) {
     requireThat(!this.runs.has(s.id), 'TURN_ALREADY_RUNNING');
+    this.executions.assertIdle(s.id, this.project(s));
     const run = { id: randomUUID(), cancelled: false };
     run.ready = new Promise((resolve) => {
       run.readyResolve = resolve;
@@ -234,6 +239,7 @@ export class DshAdapter {
         .whenIdle()
         .then(
           async () => {
+            await this.executions.wait(s.id, this.project(s));
             await this.ctx.sessions.flush(agent.session);
             if (this.runs.get(s.id) === run) {
               this.runs.delete(s.id);
@@ -242,7 +248,12 @@ export class DshAdapter {
           },
           () => {},
         )
-        .catch(() => this.core.emit(s.id, { type: 'persistence.failed' }));
+        .catch(() =>
+          this.core.emit(s.id, {
+            type: 'execution.blocked',
+            reason: 'CLEANUP_OR_PERSISTENCE_UNCONFIRMED',
+          }),
+        );
       await this.ctx.sessions.flush(agent.session);
       return { messageId: run.id, accepted: true };
     } catch (e) {
@@ -278,10 +289,17 @@ export class DshAdapter {
       await agent.whenIdle();
       await this.ctx.sessions.flush(agent.session);
     }
+    await this.executions.wait(s.id, this.project(s));
     if (this.runs.get(s.id) === run) this.runs.delete(s.id);
   }
+  quiescent(s) {
+    requireThat(!this.runs.has(s.id), 'TURN_NOT_QUIESCENT');
+    this.executions.assertIdle(s.id, this.project(s));
+  }
   async diff(s) {
-    return projectDiff(this.executor, this.project(s));
+    return this.executions.run(s.id, this.project(s), () =>
+      projectDiff(this.executor, this.project(s), s.id),
+    );
   }
   validateAnswer(request, answer) {
     validateWorkspaceAnswer(request, answer);
@@ -302,7 +320,10 @@ export class DshAdapter {
     const results = await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()));
     for (const d of this.disposers) d();
     this.handles.clear();
-    if (results.some((r) => r.status === 'rejected')) throw new Fault('DSH_CLEANUP_UNCONFIRMED');
+    await this.executions?.drain();
     await this.executor?.recover();
+    this.executor?.assertQuiescent?.();
+    if (results.some((r) => r.status === 'rejected')) throw new Fault('DSH_CLEANUP_UNCONFIRMED');
+    this.runs.clear();
   }
 }

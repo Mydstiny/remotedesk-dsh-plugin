@@ -11,6 +11,7 @@ import {
   copyFile,
   rm,
   access,
+  chmod,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -116,6 +117,29 @@ try {
     const config = await configuration(state);
     config.coordinationDirectory = join(root, 'coordination');
     await writeFile(join(state, 'config.json'), JSON.stringify(config));
+    if (profile === 'remotedesk-test') {
+      const fakeBin = join(root, 'failing-pnpm');
+      await mkdir(fakeBin);
+      await writeFile(join(fakeBin, 'pnpm'), '#!/bin/sh\nexit 7\n');
+      await chmod(join(fakeBin, 'pnpm'), 0o700);
+      await assert.rejects(
+        command(
+          process.execPath,
+          [
+            cli,
+            'plugin-install',
+            '--state',
+            state,
+            '--profile',
+            profile,
+            '--package',
+            join(scratch, packed.filename),
+          ],
+          { env: { ...env, PATH: fakeBin + ':' + env.PATH } },
+        ),
+      );
+      await access(join(env.DSH_HOME, 'profiles', profile, 'package.json'));
+    }
     await command(
       process.execPath,
       [
