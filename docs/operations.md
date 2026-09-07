@@ -1,30 +1,108 @@
-# DSH 源码诊断与操作
+# DSH 安装、运行与维护
 
-0.1.0-alpha.1 提供原生 Cordis 诊断插件与独立 doctor。没有监听端口、远程命令、安装器或鸿蒙配对功能。
+## 1. 安装前检查
 
-## 手工源码诊断
+取得维护者指定的 Release/tag 和完整 commit，检查仓库为 `Mydstiny/remotedesk-dsh-plugin`。下载版本 tarball 与 SHA256SUMS，macOS/Linux 用 `shasum -a 256` 或 `sha256sum`，Windows 用 `Get-FileHash -Algorithm SHA256` 核对。GitHub 同源 checksum 用于完整性检查，不是独立签名。
 
-使用维护者提供的可信固定提交，Node.js 22+，以及现有 DSH 安装。在仓库根目录运行：
+解压到用户有写权限的**持久版本目录**，例如用户应用目录下 `RemoteDesk/dsh/0.2.0`；不要让后台服务引用临时目录或下载完成即删除的文件。保留旧版本用于回滚。Node.js、OpenSSL、Docker CLI 和 DSH 必须在启动时 PATH 中可用；用普通用户运行，禁止以 root/SYSTEM 部署。Windows 使用 Docker Desktop Linux 容器模式，Linux 使用用户可访问的本机 Docker socket，macOS 使用本机 Docker Desktop。远端 TCP Docker daemon 不支持。
 
 ```sh
-npm test
 node bin/remotedesk-dsh.mjs doctor --json
-node test/native-runtime.mjs
-npm pack --dry-run --ignore-scripts
 ```
 
-doctor 沿 PATH 中 DSH 可执行文件的真实安装位置查找 package.json，逐一读取该 CLI 实际解析的组件版本，不启动 DSH、不读取用户 profile/会话/密钥。若自动定位失败，可传 `--runtime-root` 后跟 DSH 安装根目录的绝对路径（应含 name 为 @deepseek-ai/dsh 的 package.json）。原生测试接受相同安装根目录作为唯一位置参数。
+### DSH 原生 profile 安装
 
-原生测试只在新建的内存 Cordis Context 中加载已安装组件，创建合成 Agent/Session；验证会话事件、默认拒绝/显式拒绝/取消审批/晚到答复、既有问答 provider、插件卸载及旧引用失效。不会运行模型循环或加载用户 profile。它不是真实 DSH UI 或模型回合验收。
+解压包中已带有固定版本的 bridge-core，无需单独安装 Codex 或访问私有 npm registry。使用本地 Release 包交给原生 CLI：
 
-## 原生包结构与安装边界
+```sh
+node bin/remotedesk-dsh.mjs plugin-install --state "$STATE" --package "/absolute/path/remotedesk-dsh-plugin-0.2.0.tgz" --profile remotedesk
+```
 
-`package.json` 的 dsh.bundle.patch 指向 `cordis.patch.yml`，补丁将 `@remotedesk/dsh-plugin` 加入运行时；`src/index.mjs` 使用官方 Cordis 插件导出和 agents/sessions 服务。对接正式安装器前，还必须在隔离 DSH profile 验证 CLI 安装/移除与补丁重载。
+此命令调用 `dsh plugin --profile remotedesk add <本地包>`，写入 `launch.json`。默认新建/使用 remotedesk profile，继承 DSH 的正常 provider 配置。需要在 DSH 网页查看同一批会话时，明确指定已有 `--profile web`；先停止该 profile 的现有进程，再从本插件 `serve` 启动，避免同一 profile 重复运行。已有网页里的本地 Agent 保持原工具和问答接收链，RemoteDesk 只限制它自己创建的 Agent。仅装 bundle 而未设置 state 时插件保持未监听状态。
 
-已核对的 DSH CLI 语法为 `dsh plugin --profile <profile> add <本地包或固定包名>`。这会更改该 profile 的包依赖，且需要其包管理器。本 alpha 不自动执行此命令，不将未验证的 profile 安装宣称为完成；源码中的原生测试是目前可重复执行的验证入口。
+升级时先停止服务，用新 tarball 再运行 `plugin-install`，并保留 `launch.json`。卸载 bundle 的原生命令是 `dsh plugin --profile <name> remove @remotedesk/dsh-plugin`；不要删除整个 profile。
 
-## 故障与退出
+## 2. 准备执行镜像
 
-0 表示当前诊断通过，2 表示阻塞，64 表示参数错误。UNVERIFIED_COMPONENT_VERSION 表示某个实际依赖版本漂移；仅 CLI 版本相同不够。RUNTIME_METADATA_UNAVAILABLE 表示安装元数据无法解析，不应通过删除 profile 或重置账号解决。
+插件不会在回合中自动拉取镜像。用仓库的固定基础镜像 Dockerfile 在本机构建，然后记录实际 image ID。自定义镜像须由本地主机管理员审核，包含 `/bin/sh`、Node.js、git 和所需工具链；项目命令无网络，依赖应预装在镜像/项目中。
 
-所有当前命令结束即退出，无后台服务、开机启动、防火墙或配对数据。清理本次临时副本不会卸载官方 DSH，也不应触碰用户会话。用户问答服务完全保留原 provider；当前不注册第二个 provider。
+```sh
+docker build -t remotedesk-sandbox:0.2.0 sandbox
+docker image inspect remotedesk-sandbox:0.2.0 --format '{{.Id}}'
+```
+
+将输出的 `sha256:...` 用于 `--image`。镜像被固定为具体内容，不使用浮动 tag。容器限额：512 MiB 内存、1 CPU、128 PID、180 秒单命令、1 MiB 输出、64 MiB 临时目录。镜像构建可联网；远程回合容器不可联网。macOS/Linux 容器使用当前 UID/GID，Windows 为 1000:1000；项目共享必须允许该用户写入。项目路径不支持逗号或换行。
+
+## 3. 初始化和项目授权
+
+下列是 POSIX shell 示例。在 PowerShell 中使用 `$STATE = Join-Path $env:USERPROFILE '.remotedesk/dsh'` 并将 `$STATE` 按普通字符串参数传入。不要复用 shell 的 HOME 变量。
+
+```sh
+STATE="$HOME/.remotedesk/dsh"
+node bin/remotedesk-dsh.mjs init --state "$STATE" --host 127.0.0.1 --hosts localhost,127.0.0.1 --port 9444
+node bin/remotedesk-dsh.mjs project-add --state "$STATE" --id demo --path "/absolute/project" --title "Demo" --image "sha256:<64 hex characters>"
+```
+
+请替换示例路径和 image ID。状态目录不能在任何授权项目中，项目不能包含状态目录。初始化只接受新空目录：POSIX 权限 0700；Windows ACL 仅当前用户完全控制。证书、配对、会话映射、操作回执等都保存在此目录，不放入仓库。
+
+局域网：初始化时 `--host` 指定本机 LAN 地址，`--hosts` 同时包含客户端实际使用的 DNS/IP、localhost 和 127.0.0.1。仅证书列出的名称可连接；`0.0.0.0` 是监听地址，不能当客户端证书名。将所选端口仅向需要的局域网开放，插件不会修改防火墙。现有配置变更应停服、编辑私有 `config.json` 并重启；SAN 变化需重新初始化证书和配对，不能使用跳过 TLS 校验。
+
+## 4. 前台启动与配对
+
+```sh
+node bin/remotedesk-dsh.mjs serve --state "$STATE"
+```
+
+成功输出 `ready: true`。在另一个终端生成两分钟有效的单次邀请；它只写入私有状态目录，不把配对码打印到日志：
+
+```sh
+node bin/remotedesk-dsh.mjs invite --state "$STATE" --projects demo --role operator --out "$STATE/invite.json"
+node bin/remotedesk-dsh.mjs pair --client "/absolute/private-client" --url "https://127.0.0.1:9444" --invite "$STATE/invite.json"
+node bin/remotedesk-dsh.mjs read --client "/absolute/private-client" --method project.list
+```
+
+远端参考客户端同样从包运行 `pair`，通过可信方式接收邀请文件；配对完成删除传输副本和邀请文件。客户端自己生成私钥，私钥不发给服务端。可签发 `viewer` 只读设备。最多 16 个未撤销设备，每个邀请替代尚未使用的旧邀请。证书有效期 90 天，到期前创建新客户端身份并撤销旧设备，不延长旧私钥身份。
+
+后台日志只应保留启动和错误码，不记录邀请或模型凭据。模型内容、附件及工具输出会正常出现在已授权会话历史中，客户端应当视为项目私有数据。
+
+## 5. 操作会话
+
+协议参数通过 JSON 文件输入，防止 shell 转义破坏内容。`read` 不需要操作 ID；`write` 自动将原始请求、epoch 和 UUID 持久保存到客户端状态目录。
+
+1. `write --method session.create --params create.json`，文件为 `{"projectId":"demo","title":"Remote task"}`，记下返回的 `sessionId`。
+2. `write --method lease.acquire --params lease.json`，文件为 `{"sessionId":"<id>"}`，记下 `lease`。
+3. `write --method turn.start --params turn.json`，文件为 `{"sessionId":"<id>","lease":"<lease>","text":"Inspect this project"}`。
+4. `read --method session.read --params session.json`，文件为 `{"sessionId":"<id>"}`；用返回的 cursor 运行 `watch --cursor <cursor>`，历史分页使用 snapshot.nextCursor 再次读取。
+5. `read --method approval.list --params session.json` 获取待处理请求。命令答复 `approval.answer` 的参数为 `{"sessionId":"<id>","lease":"<lease>","approvalId":"<id>","answer":{"decision":"accept"}}`；拒绝用 `decline`，提问答复用 `{"text":"answer"}`。
+
+所有命令都加 `node bin/remotedesk-dsh.mjs` 前缀与 `--client "/absolute/private-client"`。写租约 90 秒到期，客户端每 30 秒用 `lease.renew` 续期。断网不会取消已运行任务，但失效租约不再接受审批；显式 `turn.cancel` 才停止回合。支持 `turn.steer`、`session.archive`/`session.resume`、`diff.read` 与 UTF-8/PNG/JPEG 附件，详见 [协议](protocol.md)。模型是否支持图片另看所选 provider。
+
+**超时或 unknown：不要创建新 UUID 重发同一动作。** 使用 `retry --operation <原始ID>` 查询/重试已保存请求；过期 epoch 或 unknown 回执必须核对会话/差异后再决定新动作。服务重启会轮换事件 runtime 并清除旧租约，重新握手、快照和取得租约。SSE 的 RESET_REQUIRED 同样要重新快照，不从零盲目续接。
+
+## 6. 后台服务
+
+确认前台配对成功，Ctrl-C 停止后再安装当前用户服务：
+
+```sh
+node bin/remotedesk-dsh.mjs service --state "$STATE" --action render
+node bin/remotedesk-dsh.mjs service --state "$STATE" --action install
+node bin/remotedesk-dsh.mjs service --state "$STATE" --action status
+node bin/remotedesk-dsh.mjs service --state "$STATE" --action stop
+node bin/remotedesk-dsh.mjs service --state "$STATE" --action start
+```
+
+macOS：LaunchAgent，用户登录后启动。Linux：systemd user，需正常用户服务管理器；默认退出登录后的行为由该用户会话决定，本工具不修改 linger。Windows：当前登录用户的 Scheduled Task，LeastPrivilege/InteractiveToken，不保存密码，不支持未登录时以 SYSTEM 代运行。服务记录固定 Node 路径、插件路径和必要 PATH/DSH_HOME，不存模型密钥。
+
+服务不在崩溃后自动重启，避免不明操作被自动重复。先检查原生管理器状态与会话，再执行 `recover` 清理已确认死亡的本插件锁，随后 start。recover 拒绝活 PID，绝不偷走另一个控制器的锁。Docker 恢复仅删除带本服务 owner 标记且有本服务记录的容器，不运行 prune。
+
+## 7. 升级、回滚、续证和卸载
+
+- **升级**：核验新包和固定兼容版本 → 停止并卸载旧服务注册 → 离线备份整个私有 state 与 DSH 对应会话存储 → 解压新版本到新目录 → DSH 重新 plugin-install 本地包 → 用新目录 service install → 配对/历史/审批/取消回归。备份含私钥，必须保持私有权限。不得复制 state 给第二台机器并同时运行。
+- **回滚**：停新服务并卸载注册，保留故障现场，使用旧版本目录重装。0.2.x 仅在状态 schema 兼容时直接复用；跨状态版本使用维护前的完整离线备份，不能把旧数据库与新证书混搭。恢复旧备份会改变已知操作历史，先核对所有未决动作，不自动发起写入。
+- **服务证书**：一年有效。`renew-server --state "$STATE"` 使用同一 CA/私钥续期，再正常停启服务。SAN 不变；CA 十年到期必须安排新信任与重新配对。
+- **撤销设备**：`status` 获取本服务设备 ID，`revoke --device <id>`。最多 500 ms 内关闭现有流、取消该设备拥有的远程回合并拒绝旧审批；不会注销主机账号或取消其他本地 Agent。
+- **卸载**：先 stop，再 `service --action uninstall`；DSH 用原生 plugin remove 移除此 bundle。保留 state、DSH 会话和用户项目；明确无需历史后再由用户删除这些数据。删除版本目录仅限本插件，不卸载官方引擎、Docker 或模型账号。
+
+## 故障排查
+
+`UNVERIFIED_*`：固定兼容版本不匹配；不要删除版本门。`DOCKER_*`：检查本机 Linux daemon、共享路径、固定镜像及普通用户权限。`PRIVATE_DIRECTORY_*`：核对目录所有者/ACL，不放宽为 everyone。`PROJECT_BUSY`：另一个 RemoteDesk 会话正在写同一项目；先查看并停止正确会话。`RESET_REQUIRED`：重新握手/快照。`EPOCH_*_RECONCILE`/`unknown`：核对历史后再操作。命令退出码 0 为当前动作成功，2 为失败或不确定结果。不得把 doctor 成功当作模型账户或设备矩阵通过。

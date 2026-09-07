@@ -30,5 +30,7 @@
     "darwin",
     "linux",
     "win32"
-  ]
+  ],
+  "protocolMajor": 1,
+  "wireProtocolFrozen": true
 }

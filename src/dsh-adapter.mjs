@@ -48,7 +48,7 @@ export class DshAdapter {
    let i=0;const content=[{type:'text',text},...attachments.map(a=>a.mime==='text/plain'?{type:'text',text:Buffer.from(a.data,'base64').toString('utf8')}:{type:'image',attachment:refs[i++]})];
    agent.followup({id:run.id,role:'user',source:{kind:'user'},content});run.agent=agent;run.readyResolve();
    // Whole-agent idle is used only as activity quiescence, never as a per-message result.
-   void agent.whenIdle().then(async()=>{await this.ctx.sessions.flush(agent.session);if(this.runs.get(s.id)===run)this.runs.delete(s.id);},()=>{}).catch(()=>this.core.emit(s.id,{type:'persistence.failed'}));
+   void agent.whenIdle().then(async()=>{await this.ctx.sessions.flush(agent.session);if(this.runs.get(s.id)===run){this.runs.delete(s.id);this.core.emit(s.id,{type:'execution.idle'});}},()=>{}).catch(()=>this.core.emit(s.id,{type:'persistence.failed'}));
    await this.ctx.sessions.flush(agent.session);return {messageId:run.id,accepted:true};
   }catch(e){if(this.runs.get(s.id)===run&&!run.agent)this.runs.delete(s.id);throw e;}finally{run.readyResolve();}
  }
@@ -59,4 +59,4 @@ export class DshAdapter {
  async deactivate(s){requireThat(!this.runs.has(s.id),'TURN_ALREADY_RUNNING');const h=this.handles.get(s.id);if(h){await h.dispose();this.handles.delete(s.id);}}
  async close(){if(this.closed)return;this.closed=true;for(const r of this.runs.values())r.cancelled=true;await Promise.allSettled([...this.loading.values()]);const results=await Promise.allSettled([...this.handles.values()].map(h=>h.dispose()));for(const d of this.disposers)d();this.handles.clear();if(results.some(r=>r.status==='rejected'))throw new Fault('DSH_CLEANUP_UNCONFIRMED');await this.executor?.recover();}
 }
-const shQuote=value=>"'"+value.replaceAll("'","'\\''")+"'";
+
