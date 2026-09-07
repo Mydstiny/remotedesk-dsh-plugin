@@ -1,37 +1,43 @@
 {
   "schemaVersion": 1,
   "recordedDate": "2026-09-07",
-  "adapterVersion": "0.2.0",
+  "adapterVersion": "0.3.0",
   "originalCodeLicense": "MIT",
   "ciActions": {
     "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
     "actions/setup-node": "49933ea5288caeca8642d1e84afbd3f7d6820020"
   },
-  "executionImage": {
-    "dockerfile": "sandbox/Dockerfile",
-    "dockerfileSha256": "b2e361935df53ef9a12d05c63795fc7cabb52d369404404f0dc1c881a4121d76",
-    "baseImage": "node:26.4.0-bookworm-slim@sha256:ec82d089a8ae2cf02628da7b34ea57dc357b24db724d557fe2d240e6beb659c1",
-    "redistributed": false,
-    "buildNote": "The base is content-pinned. apt package resolution during image build can change; deployments pin the resulting immutable local image ID. No built image is included in this package."
-  },
+  "execution": "Native installed engine tools and sandbox; no container runtime.",
   "externalPrerequisites": [
     "Node.js >=22.16",
     "OpenSSL 3",
-    "local Docker with Linux containers",
-    "pnpm on PATH for native profile installation; CI tested 11.21.0"
+    "pnpm on PATH; CI tested 11.21.0"
   ],
-  "modelFixture": "Original deterministic test responses; no model weights, credentials or user transcripts are included.",
+  "modelFixture": "Original deterministic local test responses; no model weights, credentials or user transcripts included.",
   "redistributedDependencies": [
     {
       "name": "@remotedesk/bridge-core",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "license": "MIT",
-      "archive": "vendor/remotedesk-bridge-core-0.2.0.tgz",
-      "sha256": "7a6c29a7774b8c528a948c53674263dab8527f92dfcb51e18fa0c3bd06f2cebb",
+      "archive": "vendor/remotedesk-bridge-core-0.3.0.tgz",
+      "sha256": "7f646214059bb569a21fd6993e689e0d3e2c0fe08578ab04bf65ee47cd35f114",
       "source": "https://github.com/Mydstiny/remotedesk-codex-plugin",
-      "sourceCommit": "623801b4b2f45db9187bb8f467fbcfeea4197789",
+      "sourceCommit": "8913dd515bf081fde7bde408946a958f0882b5c6",
       "sourceDirectory": "packages/bridge-core",
       "bundled": true
+    }
+  ],
+  "derivedSource": [
+    {
+      "name": "DSH standard agent preset",
+      "upstreamVersion": "0.1.2-rc.1",
+      "license": "MIT",
+      "copyright": "Copyright (c) 2026 DeepSeek",
+      "licenseFile": "presets/LICENSE.DeepSeek",
+      "file": "presets/remotedesk-native/agent.cordis.yml",
+      "sha256": "8a2c15e2a4f5dded484005e1b3066acb40dad98f4186d8dd4feb3feba190d261",
+      "source": "https://github.com/deepseek-ai/deepseek-harness",
+      "modifications": "Delegation group disabled. Other standard preset rows preserved."
     }
   ],
   "externalRuntimeComponents": [
@@ -167,10 +173,180 @@
       "publicDeclaration": "lib/types/index.d.ts",
       "publicDeclarationSha256": "df443cace314c2933a3f081e4041cc96f922fd72c97a4df63c0c7be4d5eb4dce",
       "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-agent-presets",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "c8dc1088768ce2153b1e6be254eb3ba7dd91b314fd83aee332adbdd7950dcb98",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "6c95cc87ed1fb7f1b448dedab92be1a02f63f6832b568a480e99b93617d6a8c3",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "5de17f0b1669aa739518943e4859ef3c1fad31d34168f802c0686bc3493e3891",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "8e5fca22b53e76511c25d56482b9baaf24bfefdc6f05948f8264f653a983b3c1",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox-local",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "dcbd09f86ab4d5de04694d8077a0e8c1de2fc6b379c6eaa8b3a802153248dde8",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "eb1e663aba3872b850d5aa57c2fd375408251a695b75c41c8cba46b403095862",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-sandbox-policy",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "3e7e22c1188e637da04c78554804d17906205620a804a581a4283944c0fe6a7b",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "8ecfda31bc84dc12ac800758e726a018421536b1f699e5368399b7e2c3d19ee4",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-subprocess-local",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "a3a1bbb9afdb51d436935292ab29d5822f30d6d65850906396ffff8233cbfe33",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "c71836f9b675774c81ef26354a0488dcc8762eef347a2473823928d35051c9e4",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-jobs",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "45fe896b35393c198f1408e2cd49ae68cbee06c7f0eefa5597075b4e8eba3c46",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "e9bd5c2f5a637b18c78141d36d09968ecac43a8bc8a261b02b1bb8276c3f10cf",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-query",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "7e2242e1c2ed14109800a9c13ab7218d27043f4b5b9641b70a957ba356ad0368",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "1bad1456842b75b50557ce3d975cce5e022f3020eda71d9fee02c39de8d0b693",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-session-title",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "802219fbc50865a9ecebebe05a656d71274471fdf7446cc58e96550716170c44",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "5729c6b69ac63684df81c033e56cbe309c8169585b6768e35417fbfe1584ee97",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-app-boot",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "226e079b427c9a24e1e0c86c07c86bc5625c8509dfb2d6d3c40ce8d38a41e293",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "42cb70cb9db39aa38c446c882c583d734f4cac1f711bcceed7e05a4636cfde1c",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-tool-fs",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "99cf93050a81511916eaa625a256701e6e0b6f096cfcc04921c5a541c722218a",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "ad438388d7c020b8e2dff5d7df93132f303465e672356dc824b04bf1fa1377f6",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-tool-jobs",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "5f65391d089d816f9c1d62bd0345224c241da8efc449eec46f08906243ff6e3c",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "763dd4632871b838d981c28bfc964baa9d3307c6ec1e37cd6ef50ef9838ff520",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-terminal",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "0483ba0c589e3a57a4d041f10273324ee74d2b09afdbd83179ec53677d29f880",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "d2336488b068e5943479a8c4dcbabf5c9dcfb48e7e0fa85f36fb1ecd81339cfe",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-bash-sandbox",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "0b132a46ecd1a0200822fa069f229f08357b7b6d4e908a4c298d704c61db5091",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "978ad3be6df5f07b82c8bcdf9bebc50e0729706d70bd3525822fe3ef92edfaf0",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-pwsh-sandbox",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "dd96b028132ff9f4d3f4a8db6cb8eb62a95710e39b08c83f3c88914e1db0535b",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "acf186f1e91923f1861b04c182bcfd8ea79e237c1faea5c7e77bfa7254ae629b",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-fs-sandbox",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "0e1a819808189de36972087b791c8f243fe9307653a7d6a3f197c6b0bbff1a72",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "af579ceb6ff5b93ff0b449a66fa8aa941ba00f2a6d50b5632e60e1730803519c",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-compaction-basic",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "abcc7a342ab1134eb6a1819686172d4c72026c9aa9a458412317119a4809747d",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "8f3a2e81523980868b5b40e74fc6495238771177446f0757dad6b53e7dcb5adc",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-tool-bash",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "78810438c9e34f2147220717e485652980792d147d0b34ee2313796aa7a92506",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "27718efd3ad8c207fc6bfb3de6112bedda75a15c6a61d24ad2482c2057095935",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-tool-pwsh",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "173b8653e4f78a74e25abe088c4b94cad12f0a3e2ba4d387aa17dc9d61279ff0",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "869b1ae2b0c920335f0c3ffd699e2026efb59b4ccf14f06a0ffee9e4f9a49530",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-agent-instructions",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "0f70dac8c3d8dcfebeee2b8568f64fc23edb4c4ae3ea6c0015dfd693df335bb9",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "5622c24fc8768b3466e20dcffadeb5fa449d03040bc10db76c466d401b826a29",
+      "redistributed": false
     }
   ],
   "cliVersion": "0.1.2-rc.1",
   "source": "https://github.com/deepseek-ai/deepseek-harness",
-  "documentation": "https://deepseek-harness.github.io/deepseek-harness/en/reference/",
-  "warning": "Only the exact installed versions above have native compatibility evidence. Moving upstream main documentation is not a compatibility receipt."
+  "documentation": "https://deepseek-harness.github.io/deepseek-harness/en/reference/"
 }
