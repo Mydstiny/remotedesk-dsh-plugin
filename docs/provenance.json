@@ -14,7 +14,12 @@
     "redistributed": false,
     "buildNote": "The base is content-pinned. apt package resolution during image build can change; deployments pin the resulting immutable local image ID. No built image is included in this package."
   },
-  "externalPrerequisites": ["Node.js >=22.16", "OpenSSL 3", "local Docker with Linux containers"],
+  "externalPrerequisites": [
+    "Node.js >=22.16",
+    "OpenSSL 3",
+    "local Docker with Linux containers",
+    "pnpm on PATH for native profile installation; CI tested 11.21.0"
+  ],
   "modelFixture": "Original deterministic test responses; no model weights, credentials or user transcripts are included.",
   "redistributedDependencies": [
     {
@@ -22,9 +27,9 @@
       "version": "0.2.0",
       "license": "MIT",
       "archive": "vendor/remotedesk-bridge-core-0.2.0.tgz",
-      "sha256": "e0b798fca73ef86c332736fd072baff62273b3ddc21db84a31f6703668f02304",
+      "sha256": "9bfd24a7ceef2d3a8415fd57d63aaae65a3365a42b8d202fe552fd7a49af6f1c",
       "source": "https://github.com/Mydstiny/remotedesk-codex-plugin",
-      "sourceCommit": "9c1f37123f2c694ebac3d0f8b4b4cf2a4af8d232",
+      "sourceCommit": "3ad0160eaf447a1d991cc186be886cb7a7926584",
       "sourceDirectory": "packages/bridge-core",
       "bundled": true
     }
