@@ -1,11 +1,11 @@
 {
   "name": "@remotedesk/dsh-plugin",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.16.0"
   },
   "exports": {
     ".": "./src/index.mjs"
@@ -35,6 +35,13 @@
     "test",
     "AGENTS.md",
     "CONTRIBUTING.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "vendor"
+  ],
+  "dependencies": {
+    "@remotedesk/bridge-core": "file:vendor/remotedesk-bridge-core-0.2.0.tgz"
+  },
+  "bundleDependencies": [
+    "@remotedesk/bridge-core"
   ]
 }

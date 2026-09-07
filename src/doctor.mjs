@@ -12,6 +12,7 @@ export async function locateRuntime() {
     const executable = join(directory, process.platform === 'win32' ? 'dsh.cmd' : 'dsh');
     try {
       await access(executable, constants.X_OK);
+      if(process.platform==='win32'){const root=join(directory,'node_modules','@deepseek-ai','dsh');try{if((await metadata(join(root,'package.json'))).name==='@deepseek-ai/dsh')return root;}catch{}}
       let candidate = dirname(await realpath(executable));
       for (let i = 0; i < 4; i++) {
         try { if ((await metadata(join(candidate, 'package.json'))).name === '@deepseek-ai/dsh') return candidate; } catch { /* keep walking */ }
@@ -41,8 +42,8 @@ export async function doctor({ runtimeRoot } = {}) {
     schemaVersion: 1, status: 'blocked', changed: false,
     componentVersions: { adapter: compatibility.adapterVersion, node: process.versions.node },
     checks: [], actions: [], requiresUserAction: [],
-    warnings: ['AI0_ONLY_NO_REMOTE_ACCESS', 'USER_QUESTIONS_SINGLE_PROVIDER', 'EXECUTION_SANDBOX_NOT_VERIFIED'],
-    capabilities: { remoteAccess: false, proEntitlement: 'pro.lifetime' }
+    warnings: ['DOCKER_PROJECT_CHECK_REQUIRED_BEFORE_SERVE', 'PROVIDER_AUTHENTICATION_STAYS_ON_HOST'],
+    capabilities: { remoteAccess: false, remoteProtocol: 1, proEntitlement: 'pro.lifetime' }
   };
   try {
     if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('NODE_VERSION_UNSUPPORTED');

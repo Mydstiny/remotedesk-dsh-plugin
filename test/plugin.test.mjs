@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { apply } from '../src/index.mjs';
+import { apply } from '../src/ai0-probe.mjs';
 
 function harness() {
   const events = new Map();

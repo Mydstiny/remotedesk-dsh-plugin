@@ -1,3 +1,3 @@
 - insert:
-    - id: remotedesk-ai0-probe
+    - id: remotedesk-bridge
       name: '@remotedesk/dsh-plugin'
