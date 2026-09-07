@@ -41,3 +41,15 @@ test('revokes retained plugin handles on dispose', () => {
   assert.throws(() => api.status(), /PROBE_DISPOSED/);
   assert.throws(() => api.observe({ id: 'one' }), /PROBE_DISPOSED/);
 });
+test('releases the exact disposed agent without evicting a replacement', () => {
+  const h = harness(); const session = { id: 'one' }; const first = { id: 'one', session };
+  h.live.set('one', first); h.sessions.set('one', session);
+  h.ctx.remotedeskProbe.observe(first);
+  h.emit('agent/disposed', { agent: first });
+  assert.equal(h.ctx.remotedeskProbe.status().observedAgents, 0);
+  const replacement = { id: 'one', session };
+  h.live.set('one', replacement);
+  h.ctx.remotedeskProbe.observe(replacement);
+  h.emit('agent/disposed', { agent: first });
+  assert.equal(h.ctx.remotedeskProbe.status().observedAgents, 1);
+});

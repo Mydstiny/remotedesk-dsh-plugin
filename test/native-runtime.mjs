@@ -49,10 +49,17 @@ try {
   assert.deepEqual(session.events.filter(e => e.type === 'approval/decided').map(e => e.data.outcome),
     ['unavailable', 'rejected', 'cancelled']);
   assert.deepEqual(await ctx.userQuestions.ask({ questions: [{ id: 'probe', question: 'AI0 fixture?', options: [] }] }), { answers: [] });
+  await unregister();
+  assert.equal(api.status().observedAgents, 0);
+  assert.throws(() => api.observe(agent), /EXACT_LIVE/);
+  const replacement = { ...agent };
+  const unregisterReplacement = ctx.agents.register(replacement);
+  api.observe(replacement);
+  assert.equal(api.status().observedAgents, 1);
   await fiber.dispose();
   assert.throws(() => api.status(), /PROBE_DISPOSED/);
   session.append('turn/end', {});
-  unregister();
+  await unregisterReplacement();
   originalProvider();
   console.log('PASS native Cordis load, real registry/session event, approval fail-closed/deny/abort/late-answer audit, existing question provider, unload fencing (fixture; no model loop)');
 } finally { await ctx.fiber.dispose(); }

@@ -27,7 +27,7 @@ export function apply(ctx) {
     const agent = selected.get(session.id);
     if (agent && isLive(agent) && agent.session === session && Number.isSafeInteger(event.seq)) acceptedEvents++;
   });
-  ctx.on('agent/disposed', agent => {
+  ctx.on('agent/disposed', ({ agent }) => {
     if (selected.get(agent.id) === agent) selected.delete(agent.id);
   });
   ctx.effect(() => () => { disposed = true; selected.clear(); acceptedEvents = 0; });
