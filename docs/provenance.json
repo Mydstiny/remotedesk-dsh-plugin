@@ -27,9 +27,9 @@
       "version": "0.2.0",
       "license": "MIT",
       "archive": "vendor/remotedesk-bridge-core-0.2.0.tgz",
-      "sha256": "9bfd24a7ceef2d3a8415fd57d63aaae65a3365a42b8d202fe552fd7a49af6f1c",
+      "sha256": "7a6c29a7774b8c528a948c53674263dab8527f92dfcb51e18fa0c3bd06f2cebb",
       "source": "https://github.com/Mydstiny/remotedesk-codex-plugin",
-      "sourceCommit": "3ad0160eaf447a1d991cc186be886cb7a7926584",
+      "sourceCommit": "623801b4b2f45db9187bb8f467fbcfeea4197789",
       "sourceDirectory": "packages/bridge-core",
       "bundled": true
     }
