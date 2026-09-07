@@ -1,1 +1,1 @@
-export {DockerExecutor} from '@remotedesk/bridge-core/docker';
+export { DockerExecutor } from '@remotedesk/bridge-core/docker';

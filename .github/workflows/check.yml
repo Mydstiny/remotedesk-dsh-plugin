@@ -49,3 +49,4 @@ jobs:
           printf 'REMOTEDESK_TEST_IMAGE=%s\n' "$(docker image inspect remotedesk-test --format '{{.Id}}')" >> "$GITHUB_ENV"
       - run: node test/docker-runtime.mjs
       - run: node test/bridge-runtime.mjs
+      - run: node test/profile-runtime.mjs

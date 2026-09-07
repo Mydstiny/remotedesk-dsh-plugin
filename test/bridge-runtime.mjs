@@ -1,19 +1,249 @@
 // Real native DSH AgentLoop + real Docker executor + authenticated network facade.
 // Only the LLM response is deterministic; no user project or paid model call.
-import {pngBase64} from './fixture-image.mjs';
-import assert from 'node:assert/strict';import {createRequire} from 'node:module';import {pathToFileURL} from 'node:url';import {join} from 'node:path';import {mkdtemp,mkdir,rm,readFile,writeFile,realpath} from 'node:fs/promises';import {tmpdir} from 'node:os';import {randomUUID} from 'node:crypto';
-import {Bridge} from '@remotedesk/bridge-core';import {init,addProject,invite,configuration,revoke} from '@remotedesk/bridge-core/admin';import {pairClient,loadClient} from '@remotedesk/bridge-core/client';import {locateRuntime} from '../src/doctor.mjs';import {DshAdapter} from '../src/dsh-adapter.mjs';
-const root=await realpath(await mkdtemp(join(tmpdir(),'remotedesk-dsh-wire-'))),workspace=join(root,'workspace'),state=join(root,'state');await mkdir(workspace);const require=createRequire(join(await locateRuntime(),'package.json')),load=async name=>import(pathToFileURL(require.resolve('@deepseek-ai/'+name)).href),{Context}=await load('cordis'),{LlmAdapter}=await load('dsh-llm'),ctx=new Context();let selected='text',sequence=0,imageSeen=false,steerSeen=false,releaseModel,bridge;
-class Fixture extends LlmAdapter{async resolveModel(provider,model){return {provider,id:model,name:model,inputModalities:['text','image']};}async *stream(options){steerSeen ||= JSON.stringify(options.messages).includes('STEER_FIXTURE');if(selected==='hold'){await new Promise(r=>releaseModel=r);selected='text';}imageSeen ||= options.messages.some(m=>m.content.some(b=>b.type==='image'));if(selected==='hang'){await new Promise(r=>options.signal.addEventListener('abort',r,{once:true}));return;}const mode=selected;selected='text';if(['exec','question','escape'].includes(mode)){const name=mode==='question'?'remotedesk_question':'remotedesk_workspace_exec',args=mode==='question'?{question:'Approve the fixture result?'}:{command:mode==='escape'?"node -e \"try{require('fs').readFileSync('/host-canary');console.log('ESCAPE')}catch{console.log('DENIED')}\"":"printf 'DOCKER_WIRE_OK' > wire-result.txt; cat wire-result.txt"},block={type:'tool-call',id:'wire-'+(++sequence),name,arguments:JSON.stringify(args)};yield{type:'block-start',index:0,blockType:'tool-call'};yield{type:'tool-call-delta',index:0,id:block.id,name,argumentsDelta:block.arguments};yield{type:'block-end',index:0,block};yield{type:'finish',reason:{kind:'tool-calls'}};return;}yield{type:'block-start',index:0,blockType:'text'};yield{type:'text-delta',index:0,text:'DSH_WIRE_COMPLETE'};yield{type:'block-end',index:0,block:{type:'text',text:'DSH_WIRE_COMPLETE'}};yield{type:'finish',reason:{kind:'stop'}};}}
-const waitFor=async fn=>{const until=Date.now()+30000;while(Date.now()<until){const value=await fn();if(value)return value;await new Promise(r=>setTimeout(r,30));}throw new Error('FIXTURE_WAIT_TIMEOUT');};
-try{
- for(const [name,config]of [['dsh-llm',{}],['dsh-attachment-local',{dshHome:join(root,'dsh-attachments')}],['dsh-system-prompt',{}],['dsh-session',{}],['dsh-session-projection',{}],['dsh-agent',{}],['dsh-tools',{mode:'native'}],['dsh-session-persistence-jsonl',{root:join(root,'sessions'),compression:'none'}],['dsh-user-questions',{}],['dsh-agent-loop',{agents:[]}]]){const module=await load(name);await ctx.plugin(module.default,config);}ctx.llm.registerAdapter(['fixture'],new Fixture());
- await init(state,{engine:'dsh'});await addProject(state,{id:'p',path:workspace,provider:'fixture',model:'fixture',vision:true,image:process.env.REMOTEDESK_TEST_IMAGE});const config=await configuration(state);config.port=0;config.coordinationDirectory=join(root,'locks');await writeFile(join(state,'config.json'),JSON.stringify(config));bridge=new Bridge(state,new DshAdapter(ctx));const {address}=await bridge.start();const directory=join(root,'client');await pairClient(directory,{url:`https://127.0.0.1:${address.port}`,invite:await invite(state,{projects:['p']})});const {client,handshake}=await loadClient(directory),call=(method,params,operationId=randomUUID())=>client.write(method,params,{operationId,epoch:handshake.epoch.id});const created=await call('session.create',{projectId:'p'});assert.equal(created.status,'succeeded');const id=created.result.sessionId,lease=(await call('lease.acquire',{sessionId:id})).result.lease;const events=[],abort=new AbortController();const stream=client.events({cursor:0,runtime:handshake.runtime,signal:abort.signal,onEvent:e=>events.push(e)}).catch(e=>e);
- const turn=async(mode,answer)=>{selected=mode;const op=randomUUID(),packet={sessionId:id,lease,text:'Wire fixture '+mode};const r=await call('turn.start',packet,op);assert.equal(r.status,'succeeded');assert.deepEqual(await call('turn.start',packet,op),r);if(answer){const pending=await waitFor(async()=> (await client.read('approval.list',{sessionId:id}))[0]);assert.equal((await call('approval.answer',{sessionId:id,lease,approvalId:pending.id,answer})).status,'succeeded');}await waitFor(async()=>ctx.agents.get(id).status==='idle');await waitFor(()=>!bridge.adapter.runs.has(id));};
- await turn('exec',{decision:'accept'});assert.equal(await readFile(join(workspace,'wire-result.txt'),'utf8'),'DOCKER_WIRE_OK');await turn('exec',{decision:'decline'});await turn('escape',{decision:'accept'});await turn('question',{text:'WIRE_ANSWER'});assert.ok(JSON.stringify(await client.read('session.read',{sessionId:id})).includes('WIRE_ANSWER'));assert.ok(events.some(e=>JSON.stringify(e).includes('DSH_WIRE_COMPLETE')));
- const upload=await call('attachment.upload',{projectId:'p',mime:'text/plain',data:Buffer.from('ATTACHMENT_FIXTURE').toString('base64')});assert.equal(upload.status,'succeeded');selected='text';assert.equal((await call('turn.start',{sessionId:id,lease,text:'Attached fixture',attachments:[upload.result.attachmentId]})).status,'succeeded');await waitFor(()=>ctx.agents.get(id).status==='idle');await waitFor(()=>!bridge.adapter.runs.has(id));assert.ok(JSON.stringify(await client.read('session.read',{sessionId:id})).includes('ATTACHMENT_FIXTURE'));
- const imageUpload=await call('attachment.upload',{projectId:'p',mime:'image/png',data:pngBase64});assert.equal(imageUpload.status,'succeeded');selected='text';assert.equal((await call('turn.start',{sessionId:id,lease,text:'Image fixture',attachments:[imageUpload.result.attachmentId]})).status,'succeeded');await waitFor(()=>!bridge.adapter.runs.has(id));assert.ok(imageSeen,'image reaches actual DSH adapter');
- selected='hold';await call('turn.start',{sessionId:id,lease,text:'Steering fixture'});await waitFor(()=>releaseModel);assert.equal((await call('turn.steer',{sessionId:id,lease,text:'STEER_FIXTURE'})).status,'succeeded');releaseModel();await waitFor(()=>!bridge.adapter.runs.has(id));assert.ok(steerSeen,'steer reaches the next DSH model step');
- selected='hang';await call('turn.start',{sessionId:id,lease,text:'Cancel fixture'});await waitFor(()=>ctx.agents.get(id).status==='running');assert.equal((await call('turn.cancel',{sessionId:id,lease})).status,'succeeded');assert.equal(ctx.agents.get(id).status,'idle');assert.equal((await call('session.archive',{sessionId:id,lease})).status,'succeeded');assert.equal((await call('session.resume',{sessionId:id,lease})).status,'succeeded');assert.ok((await client.read('session.read',{sessionId:id})).snapshot.events.length>0);
- revoke(state,handshake.deviceId);await assert.rejects(client.read('project.list'),/DEVICE_UNAUTHORIZED/);abort.abort();await stream;console.log('PASS native DSH + real Docker + mTLS: session, stream, command approve/deny, question, attachment, dedup, cancel, archive/resume and revoke');
-}finally{await bridge?.stop();await ctx.fiber.dispose();await rm(root,{recursive:true,force:true});}
+import { pngBase64 } from './fixture-image.mjs';
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+import { mkdtemp, mkdir, rm, readFile, writeFile, realpath } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { Bridge } from '@remotedesk/bridge-core';
+import { init, addProject, invite, configuration, revoke } from '@remotedesk/bridge-core/admin';
+import { pairClient, loadClient } from '@remotedesk/bridge-core/client';
+import { locateRuntime } from '../src/doctor.mjs';
+import { DshAdapter } from '../src/dsh-adapter.mjs';
+const root = await realpath(await mkdtemp(join(tmpdir(), 'remotedesk-dsh-wire-'))),
+  workspace = join(root, 'workspace'),
+  state = join(root, 'state');
+await mkdir(workspace);
+const require = createRequire(join(await locateRuntime(), 'package.json')),
+  load = async (name) => import(pathToFileURL(require.resolve('@deepseek-ai/' + name)).href),
+  { Context } = await load('cordis'),
+  { LlmAdapter } = await load('dsh-llm'),
+  ctx = new Context();
+let selected = 'text',
+  sequence = 0,
+  imageSeen = false,
+  steerSeen = false,
+  releaseModel,
+  bridge;
+class Fixture extends LlmAdapter {
+  async resolveModel(provider, model) {
+    return { provider, id: model, name: model, inputModalities: ['text', 'image'] };
+  }
+  async *stream(options) {
+    steerSeen ||= JSON.stringify(options.messages).includes('STEER_FIXTURE');
+    if (selected === 'hold') {
+      await new Promise((r) => (releaseModel = r));
+      selected = 'text';
+    }
+    imageSeen ||= options.messages.some((m) => m.content.some((b) => b.type === 'image'));
+    if (selected === 'hang') {
+      await new Promise((r) => options.signal.addEventListener('abort', r, { once: true }));
+      return;
+    }
+    const mode = selected;
+    selected = 'text';
+    if (['exec', 'question', 'escape'].includes(mode)) {
+      const name = mode === 'question' ? 'remotedesk_question' : 'remotedesk_workspace_exec',
+        args =
+          mode === 'question'
+            ? { question: 'Approve the fixture result?' }
+            : {
+                command:
+                  mode === 'escape'
+                    ? "node -e \"try{require('fs').readFileSync('/host-canary');console.log('ESCAPE')}catch{console.log('DENIED')}\""
+                    : "printf 'DOCKER_WIRE_OK' > wire-result.txt; cat wire-result.txt",
+              },
+        block = {
+          type: 'tool-call',
+          id: 'wire-' + ++sequence,
+          name,
+          arguments: JSON.stringify(args),
+        };
+      yield { type: 'block-start', index: 0, blockType: 'tool-call' };
+      yield {
+        type: 'tool-call-delta',
+        index: 0,
+        id: block.id,
+        name,
+        argumentsDelta: block.arguments,
+      };
+      yield { type: 'block-end', index: 0, block };
+      yield { type: 'finish', reason: { kind: 'tool-calls' } };
+      return;
+    }
+    yield { type: 'block-start', index: 0, blockType: 'text' };
+    yield { type: 'text-delta', index: 0, text: 'DSH_WIRE_COMPLETE' };
+    yield { type: 'block-end', index: 0, block: { type: 'text', text: 'DSH_WIRE_COMPLETE' } };
+    yield { type: 'finish', reason: { kind: 'stop' } };
+  }
+}
+const waitFor = async (fn) => {
+  const until = Date.now() + 30000;
+  while (Date.now() < until) {
+    const value = await fn();
+    if (value) return value;
+    await new Promise((r) => setTimeout(r, 30));
+  }
+  throw new Error('FIXTURE_WAIT_TIMEOUT');
+};
+try {
+  for (const [name, config] of [
+    ['dsh-llm', {}],
+    ['dsh-attachment-local', { dshHome: join(root, 'dsh-attachments') }],
+    ['dsh-system-prompt', {}],
+    ['dsh-session', {}],
+    ['dsh-session-projection', {}],
+    ['dsh-agent', {}],
+    ['dsh-tools', { mode: 'native' }],
+    ['dsh-session-persistence-jsonl', { root: join(root, 'sessions'), compression: 'none' }],
+    ['dsh-user-questions', {}],
+    ['dsh-agent-loop', { agents: [] }],
+  ]) {
+    const module = await load(name);
+    await ctx.plugin(module.default, config);
+  }
+  ctx.llm.registerAdapter(['fixture'], new Fixture());
+  await init(state, { engine: 'dsh' });
+  await addProject(state, {
+    id: 'p',
+    path: workspace,
+    provider: 'fixture',
+    model: 'fixture',
+    vision: true,
+    image: process.env.REMOTEDESK_TEST_IMAGE,
+  });
+  const config = await configuration(state);
+  config.port = 0;
+  config.coordinationDirectory = join(root, 'locks');
+  await writeFile(join(state, 'config.json'), JSON.stringify(config));
+  bridge = new Bridge(state, new DshAdapter(ctx));
+  const { address } = await bridge.start();
+  const directory = join(root, 'client');
+  await pairClient(directory, {
+    url: `https://127.0.0.1:${address.port}`,
+    invite: await invite(state, { projects: ['p'] }),
+  });
+  const { client, handshake } = await loadClient(directory),
+    call = (method, params, operationId = randomUUID()) =>
+      client.write(method, params, { operationId, epoch: handshake.epoch.id });
+  const created = await call('session.create', { projectId: 'p' });
+  assert.equal(created.status, 'succeeded');
+  const id = created.result.sessionId,
+    lease = (await call('lease.acquire', { sessionId: id })).result.lease;
+  const events = [],
+    abort = new AbortController();
+  const stream = client
+    .events({
+      cursor: 0,
+      runtime: handshake.runtime,
+      signal: abort.signal,
+      onEvent: (e) => events.push(e),
+    })
+    .catch((e) => e);
+  const turn = async (mode, answer) => {
+    selected = mode;
+    const op = randomUUID(),
+      packet = { sessionId: id, lease, text: 'Wire fixture ' + mode };
+    const r = await call('turn.start', packet, op);
+    assert.equal(r.status, 'succeeded');
+    assert.deepEqual(await call('turn.start', packet, op), r);
+    if (answer) {
+      const pending = await waitFor(
+        async () => (await client.read('approval.list', { sessionId: id }))[0],
+      );
+      assert.equal(
+        (await call('approval.answer', { sessionId: id, lease, approvalId: pending.id, answer }))
+          .status,
+        'succeeded',
+      );
+    }
+    await waitFor(async () => ctx.agents.get(id).status === 'idle');
+    await waitFor(() => !bridge.adapter.runs.has(id));
+  };
+  await turn('exec', { decision: 'accept' });
+  assert.equal(await readFile(join(workspace, 'wire-result.txt'), 'utf8'), 'DOCKER_WIRE_OK');
+  await turn('exec', { decision: 'decline' });
+  await turn('escape', { decision: 'accept' });
+  await turn('question', { text: 'WIRE_ANSWER' });
+  assert.ok(
+    JSON.stringify(await client.read('session.read', { sessionId: id })).includes('WIRE_ANSWER'),
+  );
+  assert.ok(events.some((e) => JSON.stringify(e).includes('DSH_WIRE_COMPLETE')));
+  const upload = await call('attachment.upload', {
+    projectId: 'p',
+    mime: 'text/plain',
+    data: Buffer.from('ATTACHMENT_FIXTURE').toString('base64'),
+  });
+  assert.equal(upload.status, 'succeeded');
+  selected = 'text';
+  assert.equal(
+    (
+      await call('turn.start', {
+        sessionId: id,
+        lease,
+        text: 'Attached fixture',
+        attachments: [upload.result.attachmentId],
+      })
+    ).status,
+    'succeeded',
+  );
+  await waitFor(() => ctx.agents.get(id).status === 'idle');
+  await waitFor(() => !bridge.adapter.runs.has(id));
+  assert.ok(
+    JSON.stringify(await client.read('session.read', { sessionId: id })).includes(
+      'ATTACHMENT_FIXTURE',
+    ),
+  );
+  const imageUpload = await call('attachment.upload', {
+    projectId: 'p',
+    mime: 'image/png',
+    data: pngBase64,
+  });
+  assert.equal(imageUpload.status, 'succeeded');
+  selected = 'text';
+  assert.equal(
+    (
+      await call('turn.start', {
+        sessionId: id,
+        lease,
+        text: 'Image fixture',
+        attachments: [imageUpload.result.attachmentId],
+      })
+    ).status,
+    'succeeded',
+  );
+  await waitFor(() => !bridge.adapter.runs.has(id));
+  assert.ok(imageSeen, 'image reaches actual DSH adapter');
+  selected = 'hold';
+  await call('turn.start', { sessionId: id, lease, text: 'Steering fixture' });
+  await waitFor(() => releaseModel);
+  assert.equal(
+    (await call('turn.steer', { sessionId: id, lease, text: 'STEER_FIXTURE' })).status,
+    'succeeded',
+  );
+  releaseModel();
+  await waitFor(() => !bridge.adapter.runs.has(id));
+  assert.ok(steerSeen, 'steer reaches the next DSH model step');
+  selected = 'hang';
+  await call('turn.start', { sessionId: id, lease, text: 'Cancel fixture' });
+  await waitFor(() => ctx.agents.get(id).status === 'running');
+  assert.equal((await call('turn.cancel', { sessionId: id, lease })).status, 'succeeded');
+  assert.equal(ctx.agents.get(id).status, 'idle');
+  assert.equal((await call('session.archive', { sessionId: id, lease })).status, 'succeeded');
+  assert.equal((await call('session.resume', { sessionId: id, lease })).status, 'succeeded');
+  assert.ok((await client.read('session.read', { sessionId: id })).snapshot.events.length > 0);
+  revoke(state, handshake.deviceId);
+  await assert.rejects(client.read('project.list'), /DEVICE_UNAUTHORIZED/);
+  abort.abort();
+  await stream;
+  console.log(
+    'PASS native DSH + real Docker + mTLS: session, stream, command approve/deny, question, attachment, dedup, cancel, archive/resume and revoke',
+  );
+} finally {
+  await bridge?.stop();
+  await ctx.fiber.dispose();
+  await rm(root, { recursive: true, force: true });
+}

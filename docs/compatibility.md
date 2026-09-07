@@ -1,17 +1,20 @@
-# DSH 兼容性与验证边界
+# 兼容性与验收边界
 
-2026-09-07 本机证据：macOS arm64 / Node 26.4.0 / DSH CLI 0.1.0-rc.6。CLI 内实际解析的 dsh-base、dsh-agent、dsh-session、dsh-user-approval、dsh-user-questions 均为 0.1.0-rc.8；Cordis 4.0.1。见 [完整允许列表](../compatibility.json)。本表记录实际组件组合，不声称只安装 CLI rc.6 就能永久获得相同依赖。
+电脑端版本 **0.2.0 / protocol v1**，固定 DSH **0.1.2-rc.1**。Node.js 最低 22.16；OpenSSL 3；本机 Docker Linux 容器。精确组件允许列表见 [compatibility.json](../compatibility.json)，未知版本拒绝监听。源码检查与真实引擎检查的区分如下。
 
-| 项目 | 已验证 | 仍待验证 |
+| 检查 | 实际执行 | 范围 |
 | --- | --- | --- |
-| 原生 Cordis 插件 | 实际运行时加载/卸载、准确实例筛选、真实 SessionStore 事件、卸载后的旧引用失效 | CLI profile 安装/升级/移除、本机 UI 热重载 |
-| 权限审批 | 真实 ApprovalService 对合成 Agent 的 unavailable/rejected/cancelled 和晚到答复审计 | 真实工具调用、远程审批、多 UI 作用域分流 |
-| 用户问答 | 已有 provider 在插件加载后仍可处理请求 | 远程回答与本机 UI 共存 |
-| Agent 回合 | 类型有 send/followup/steer/cancel | 真实消息领取/回合对应、取消终态、恢复 |
-| 执行隔离 | 未验证 | shell/MCP/子 Agent/文件/联网的真实受限 profile |
+| 单元、安全及打包检查 | Windows/macOS/Linux × Node 22/24/26 | mTLS、设备撤销、租约、操作去重/过期、竞态、协议边界与打包 |
+| 固定版原生引擎 | Windows/macOS/Linux、Node 22；另有本机 macOS arm64 Node 26 | 真实引擎 + 本地确定性模型响应；回合、受限工具、审批/提问、取消、历史与冷恢复 |
+| 真实容器与 HTTPS 端到端 | Linux CI、macOS arm64 本机 Docker Desktop | 非 root、无网络、项目挂载、外部路径拒绝、读写、错误退出、取消与容器清理；配对、文本/图片、steer、审批接受/拒绝、事件、归档/恢复、重启、撤销 |
+| 三平台用户服务 | Windows Task Scheduler / macOS launchd / Linux systemd user | 共享 bridge-core 的真实管理器安装、重复安装、状态、停止、重新启动、卸载、保留 state；服务负载为隔离测试 Bridge |
+| 崩溃恢复 | Linux CI、macOS 本机 | 真实 Docker 进程在控制器 SIGKILL 后仍运行；Docker 不可用时保留写锁，恢复先确认容器停止再释放项目锁 |
+| 完整 DSH 安装配置 | Linux CI、macOS 本机 | 原生包安装到独立 profile 和 web profile；真实模型回合及归档/恢复；远程会话恰好三个工具、不读取项目外 AGENTS；web 本地 standard preset 保留自身指令 |
 
-**当前 rc.8 的 userQuestions 是单 provider 接口。** 在线主分支文档出现的作用域化问答分流不能套用于此安装版。插件不覆盖或争抢本机 provider；DSH 远程问答保持未开放，后续需选择并验证兼容方案。
+三平台服务测试位于 canonical [bridge-core 仓库](https://github.com/Mydstiny/remotedesk-codex-plugin/tree/v0.2.0/test)，DSH 打包相同版本和 hash 的共享核心。每次提交的结果可在 [GitHub Actions](https://github.com/Mydstiny/remotedesk-dsh-plugin/actions/workflows/check.yml) 查阅。
 
-`whenIdle()` 表示整个 Agent 的空闲，不能等同于某条入队消息完成。事件必须以后续实际 session seq、输入领取及 turn 边界关联，不能从终端文字推断状态。
+这些测试中的模型回答是确定性测试服务，底层引擎、TLS、持久化、容器及所列系统服务均为真实组件；不涉及用户账号或付费模型调用。没有把模拟模型的输出当作云模型质量/账号验收。
 
-当前 doctor 只验证元数据，原生测试使用确定性 Agent fixture；没有真实模型、真实用户 profile、真实手机连接或 RustDesk 验收。线上 DSH 版本仍属预览，升级必须重新验证组件组合。
+Windows 的原生引擎、ACL、进程清理和任务计划已经有真实系统 CI；Windows Docker Desktop 的项目共享和 UID 1000 写入仍须在部署电脑执行文档中的冒烟验收，GitHub Windows runner 未运行 Docker Desktop Linux 容器。macOS x64/Windows arm64、无人登录启动、所有用户镜像/工具链不在已验矩阵中。
+
+HarmonyOS App 尚未开始本次接入；手机连接、Pro 购买状态、真实双机局域网、防火墙与 RustDesk TCP 隧道由后续客户端阶段验收。本版本的参考客户端可验证电脑端协议；不能替代设备验收。原生本地 Agent 不参与 RemoteDesk 的项目写锁。

@@ -2,9 +2,7 @@
   "schemaVersion": 1,
   "adapterVersion": "0.2.0",
   "stage": "host-v1",
-  "cliVersions": [
-    "0.1.2-rc.1"
-  ],
+  "cliVersions": ["0.1.2-rc.1"],
   "components": {
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-base": "0.1.2-rc.1",
@@ -26,11 +24,7 @@
   "userQuestionMode": "remote-owned-tool-preserves-host-waterfall",
   "remoteAccess": true,
   "entitlement": "pro.lifetime",
-  "platforms": [
-    "darwin",
-    "linux",
-    "win32"
-  ],
+  "platforms": ["darwin", "linux", "win32"],
   "protocolMajor": 1,
   "wireProtocolFrozen": true
 }

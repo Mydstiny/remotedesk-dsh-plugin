@@ -10,18 +10,6 @@
 node bin/remotedesk-dsh.mjs doctor --json
 ```
 
-### DSH 原生 profile 安装
-
-解压包中已带有固定版本的 bridge-core，无需单独安装 Codex 或访问私有 npm registry。使用本地 Release 包交给原生 CLI：
-
-```sh
-node bin/remotedesk-dsh.mjs plugin-install --state "$STATE" --package "/absolute/path/remotedesk-dsh-plugin-0.2.0.tgz" --profile remotedesk
-```
-
-此命令调用 `dsh plugin --profile remotedesk add <本地包>`，写入 `launch.json`。默认新建/使用 remotedesk profile，继承 DSH 的正常 provider 配置。需要在 DSH 网页查看同一批会话时，明确指定已有 `--profile web`；先停止该 profile 的现有进程，再从本插件 `serve` 启动，避免同一 profile 重复运行。已有网页里的本地 Agent 保持原工具和问答接收链，RemoteDesk 只限制它自己创建的 Agent。仅装 bundle 而未设置 state 时插件保持未监听状态。
-
-升级时先停止服务，用新 tarball 再运行 `plugin-install`，并保留 `launch.json`。卸载 bundle 的原生命令是 `dsh plugin --profile <name> remove @remotedesk/dsh-plugin`；不要删除整个 profile。
-
 ## 2. 准备执行镜像
 
 插件不会在回合中自动拉取镜像。用仓库的固定基础镜像 Dockerfile 在本机构建，然后记录实际 image ID。自定义镜像须由本地主机管理员审核，包含 `/bin/sh`、Node.js、git 和所需工具链；项目命令无网络，依赖应预装在镜像/项目中。
@@ -46,6 +34,18 @@ node bin/remotedesk-dsh.mjs project-add --state "$STATE" --id demo --path "/abso
 请替换示例路径和 image ID。状态目录不能在任何授权项目中，项目不能包含状态目录。初始化只接受新空目录：POSIX 权限 0700；Windows ACL 仅当前用户完全控制。证书、配对、会话映射、操作回执等都保存在此目录，不放入仓库。
 
 局域网：初始化时 `--host` 指定本机 LAN 地址，`--hosts` 同时包含客户端实际使用的 DNS/IP、localhost 和 127.0.0.1。仅证书列出的名称可连接；`0.0.0.0` 是监听地址，不能当客户端证书名。将所选端口仅向需要的局域网开放，插件不会修改防火墙。现有配置变更应停服、编辑私有 `config.json` 并重启；SAN 变化需重新初始化证书和配对，不能使用跳过 TLS 校验。
+
+### DSH 原生 profile 安装
+
+解压包中已带有固定版本的 bridge-core，无需单独安装 Codex 或访问私有 npm registry。使用本地 Release 包交给原生 CLI：
+
+```sh
+node bin/remotedesk-dsh.mjs plugin-install --state "$STATE" --package "/absolute/path/remotedesk-dsh-plugin-0.2.0.tgz" --profile remotedesk
+```
+
+此命令调用 `dsh plugin --profile remotedesk add <本地包>`，将包按 SHA256 缓存到私有 state/packages 后安装，并写入 `launch.json`。同一路径的升级包也不会误用原生包管理器的旧缓存。默认新建 remotedesk profile，使用该 profile 的 provider 设置。已有非本插件创建的自定义 profile 会被拒绝，请选一个新名字；本插件之前创建的 profile 可以继续升级。需要在 DSH 网页查看同一批会话时，明确指定已有 `--profile web`；先停止该 profile 的现有进程，再从本插件 `serve` 启动，避免同一 profile 重复运行。启动自有 profile 时，CLI 只为这一次进程添加 remote-only overlay，禁用全局 agent-instructions；不会改写已有 profile 文件。web profile 的本地 standard/PTC preset 保留各自的指令和工具，RemoteDesk 只限制自己创建的 Agent。如果全局 agent-instructions 仍被启用，插件拒绝监听。远程 Agent 通过容器内的只读工具读取所选项目指令。仅装 bundle 而未设置 state 时插件保持未监听状态。
+
+升级时先停止服务，用新 tarball 再运行 `plugin-install`，并保留 `launch.json`。卸载 bundle 的原生命令是 `dsh plugin --profile <name> remove @remotedesk/dsh-plugin`；不要删除整个 profile。
 
 ## 4. 前台启动与配对
 
@@ -100,7 +100,7 @@ macOS：LaunchAgent，用户登录后启动。Linux：systemd user，需正常�
 - **升级**：核验新包和固定兼容版本 → 停止并卸载旧服务注册 → 离线备份整个私有 state 与 DSH 对应会话存储 → 解压新版本到新目录 → DSH 重新 plugin-install 本地包 → 用新目录 service install → 配对/历史/审批/取消回归。备份含私钥，必须保持私有权限。不得复制 state 给第二台机器并同时运行。
 - **回滚**：停新服务并卸载注册，保留故障现场，使用旧版本目录重装。0.2.x 仅在状态 schema 兼容时直接复用；跨状态版本使用维护前的完整离线备份，不能把旧数据库与新证书混搭。恢复旧备份会改变已知操作历史，先核对所有未决动作，不自动发起写入。
 - **服务证书**：一年有效。`renew-server --state "$STATE"` 使用同一 CA/私钥续期，再正常停启服务。SAN 不变；CA 十年到期必须安排新信任与重新配对。
-- **撤销设备**：`status` 获取本服务设备 ID，`revoke --device <id>`。最多 500 ms 内关闭现有流、取消该设备拥有的远程回合并拒绝旧审批；不会注销主机账号或取消其他本地 Agent。
+- **撤销设备**：`status` 获取本服务设备 ID，`revoke --device <id>`。在轮询检测撤销后（正常间隔 500 ms）关闭现有流、拒绝旧审批，并请求取消该设备拥有的远程回合；完成取消仍需引擎与容器确认退出；不会注销主机账号或取消其他本地 Agent。
 - **卸载**：先 stop，再 `service --action uninstall`；DSH 用原生 plugin remove 移除此 bundle。保留 state、DSH 会话和用户项目；明确无需历史后再由用户删除这些数据。删除版本目录仅限本插件，不卸载官方引擎、Docker 或模型账号。
 
 ## 故障排查
