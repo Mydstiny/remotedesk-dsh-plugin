@@ -1,0 +1,40 @@
+{
+  "name": "@remotedesk/dsh-plugin",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "bin": {
+    "remotedesk-dsh": "bin/remotedesk-dsh.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "doctor": "node bin/remotedesk-dsh.mjs doctor --json"
+  },
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "NOTICE",
+    "test",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
+  ]
+}
