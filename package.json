@@ -36,7 +36,8 @@
     "AGENTS.md",
     "CONTRIBUTING.md",
     "SECURITY.md",
-    "vendor"
+    "vendor",
+    "sandbox"
   ],
   "dependencies": {
     "@remotedesk/bridge-core": "file:vendor/remotedesk-bridge-core-0.2.0.tgz"

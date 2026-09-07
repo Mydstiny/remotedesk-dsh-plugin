@@ -12,7 +12,7 @@ export class DshAdapter {
  }
  async prepare(){await this.executor.recover();for(const p of this.core.projects)await this.executor.check(p);}
  project(s){const p=this.core.projects.find(p=>p.id===s.project);requireThat(p,'PROJECT_NOT_FOUND');return p;}
- options(p){return {...(this.ctx.agentDefaultModel?.currentSelection()??{}),...(p.provider?{provider:p.provider}:{}),...(p.model?{model:p.model}:{})};}
+ options(p,s={}){return {...(this.ctx.agentDefaultModel?.currentSelection()??{}),...(p.provider?{provider:p.provider}:{}),...(p.model?{model:p.model}:{}),...(s.provider?{provider:s.provider}:{}),...(s.model?{model:s.model}:{})};}
  setup(s,p) {
   return agentCtx=>{
    const expected=new Map();let ready=false;
@@ -29,21 +29,21 @@ export class DshAdapter {
  async connect(s,create=false) {
   requireThat(!this.closed,'ADAPTER_DISPOSED');const old=this.handles.get(s.id);if(old){requireThat(this.ctx.agents.get(s.id)===old.agent,'AGENT_INSTANCE_CHANGED');return old;}
   if(this.loading.has(s.id))return this.loading.get(s.id);
-  const p=this.project(s);const pending=(async()=>{await this.executor.check(p);const opts={agentOptions:this.options(p),setup:this.setup(s,p)};
+  const p=this.project(s);const pending=(async()=>{await this.executor.check(p);const selection=this.options(p,s);requireThat(typeof selection.provider==='string'&&typeof selection.model==='string','MODEL_SELECTION_REQUIRED');const info=await this.ctx.llm.resolveModelInfo(selection.provider,selection.model);s.provider=selection.provider;s.model=selection.model;s.inputModalities=s.inputModalities??(p.vision===true?['text','image']:p.vision===false?['text']:info.inputModalities??['text']);const opts={agentOptions:selection,setup:this.setup(s,p)};
    const handle=await (create?this.ctx.agents.create({...opts,sessionId:s.id,meta:{cwd:p.path}}):this.ctx.agents.resume({...opts,resumeSessionId:s.id}));
    if(this.closed){await handle.dispose();throw new Fault('ADAPTER_DISPOSED');}
    this.handles.set(s.id,handle);return handle;
   })();this.loading.set(s.id,pending);try{return await pending;}finally{this.loading.delete(s.id);}
  }
- async create(s){await this.connect(s,true);return {upstream:s.id};}
+ async create(s){await this.connect(s,true);return {upstream:s.id,provider:s.provider,model:s.model,inputModalities:s.inputModalities};}
  async resume(s){await this.connect(s);}
- async read(s,{cursor}={}) {const {agent}=await this.connect(s);const from=cursor===undefined?0:Number(cursor);requireThat(Number.isSafeInteger(from)&&from>=0,'CURSOR_INVALID');const rows=agent.session.snapshotEvents().filter(e=>e.seq>=from&&PUBLIC_EVENT.test(e.type));const events=rows.slice(0,200);return {status:agent.status,events,nextCursor:rows.length>events.length?String(events.at(-1).seq+1):null};}
+ async read(s,{cursor}={}) {const {agent}=await this.connect(s);const from=cursor===undefined?0:Number(cursor);requireThat(Number.isSafeInteger(from)&&from>=0,'CURSOR_INVALID');const rows=agent.session.snapshotEvents().filter(e=>e.seq>=from&&PUBLIC_EVENT.test(e.type));const events=rows.slice(0,200);return {status:agent.status,model:s.model,provider:s.provider,inputModalities:s.inputModalities,events,nextCursor:rows.length>events.length?String(events.at(-1).seq+1):null};}
  async start(s,text,attachments=[]) {
   requireThat(!this.runs.has(s.id),'TURN_ALREADY_RUNNING');const run={id:randomUUID(),cancelled:false};run.ready=new Promise(resolve=>{run.readyResolve=resolve;});this.runs.set(s.id,run);
   try{
    const {agent}=await this.connect(s);requireThat(agent.status==='idle','TURN_ALREADY_RUNNING');
    const images=attachments.filter(a=>a.mime!=='text/plain');let refs=[];
-   if(images.length){requireThat(this.ctx.attachments,'IMAGE_STORE_UNAVAILABLE');refs=await this.ctx.attachments.saveImages(images.map(a=>({data:Buffer.from(a.data,'base64'),mediaType:a.mime})));}
+   if(images.length){requireThat(s.inputModalities?.includes('image'),'MODEL_IMAGE_CAPABILITY_UNDECLARED');requireThat(this.ctx.attachments,'IMAGE_STORE_UNAVAILABLE');refs=await this.ctx.attachments.saveImages(images.map(a=>({data:Buffer.from(a.data,'base64'),mediaType:a.mime})));}
    requireThat(!run.cancelled,'TURN_CANCELLED_BEFORE_DISPATCH');
    let i=0;const content=[{type:'text',text},...attachments.map(a=>a.mime==='text/plain'?{type:'text',text:Buffer.from(a.data,'base64').toString('utf8')}:{type:'image',attachment:refs[i++]})];
    agent.followup({id:run.id,role:'user',source:{kind:'user'},content});run.agent=agent;run.readyResolve();
