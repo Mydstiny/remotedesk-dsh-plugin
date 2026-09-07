@@ -1,0 +1,4 @@
+# Invocation-only overlay for a dedicated RemoteDesk profile. It does not edit
+# the saved DSH profile or affect another already running DSH process.
+- id: agent-instructions
+  disabled: true

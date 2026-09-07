@@ -1,3 +1,4 @@
+import {assertProfile} from './profile-policy.mjs';
 import { randomUUID } from 'node:crypto';
 import { Fault, requireThat, fields, string } from '@remotedesk/bridge-core/errors';
 import {workspaceTools,executeWorkspaceTool,validateWorkspaceAnswer,projectDiff} from '@remotedesk/bridge-core/workspace-tools';
@@ -10,11 +11,12 @@ export class DshAdapter {
  bind(core){this.core=core;this.executor=this.customExecutor??new DockerExecutor(core.storage);
   this.disposers.push(this.ctx.on('session/event',(session,event)=>{const h=this.handles.get(session.id);if(!h || h.agent.session!==session || this.ctx.agents.get(session.id)!==h.agent)return;if(PUBLIC_EVENT.test(event.type))core.emit(session.id,{type:event.type,seq:event.seq,data:event.data});}));
  }
- async prepare(){await this.executor.recover();for(const p of this.core.projects)await this.executor.check(p);}
+ async prepare(){assertProfile(this.ctx);await this.executor.recover();for(const p of this.core.projects)await this.executor.check(p);}
  project(s){const p=this.core.projects.find(p=>p.id===s.project);requireThat(p,'PROJECT_NOT_FOUND');return p;}
  options(p,s={}){return {...(this.ctx.agentDefaultModel?.currentSelection()??{}),...(p.provider?{provider:p.provider}:{}),...(p.model?{model:p.model}:{}),...(s.provider?{provider:s.provider}:{}),...(s.model?{model:s.model}:{})};}
  setup(s,p) {
   return agentCtx=>{
+   agentCtx.on('agent/pre-step',(_event,next)=>{assertProfile(this.ctx);return next();});
    const expected=new Map();let ready=false;
    agentCtx.tools.restrict({allow:[]});agentCtx.tools.presentAs('native');
    agentCtx.tools.guard(exec=>{
@@ -27,7 +29,7 @@ export class DshAdapter {
   };
  }
  async connect(s,create=false) {
-  requireThat(!this.closed,'ADAPTER_DISPOSED');const old=this.handles.get(s.id);if(old){requireThat(this.ctx.agents.get(s.id)===old.agent,'AGENT_INSTANCE_CHANGED');return old;}
+  assertProfile(this.ctx);requireThat(!this.closed,'ADAPTER_DISPOSED');const old=this.handles.get(s.id);if(old){requireThat(this.ctx.agents.get(s.id)===old.agent,'AGENT_INSTANCE_CHANGED');return old;}
   if(this.loading.has(s.id))return this.loading.get(s.id);
   const p=this.project(s);const pending=(async()=>{await this.executor.check(p);const selection=this.options(p,s);requireThat(typeof selection.provider==='string'&&typeof selection.model==='string','MODEL_SELECTION_REQUIRED');const info=await this.ctx.llm.resolveModelInfo(selection.provider,selection.model);s.provider=selection.provider;s.model=selection.model;s.inputModalities=s.inputModalities??(p.vision===true?['text','image']:p.vision===false?['text']:info.inputModalities??['text']);const opts={agentOptions:selection,setup:this.setup(s,p)};
    const handle=await (create?this.ctx.agents.create({...opts,sessionId:s.id,meta:{cwd:p.path}}):this.ctx.agents.resume({...opts,resumeSessionId:s.id}));
