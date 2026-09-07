@@ -7,7 +7,7 @@ import {promisify} from 'node:util';
 import {DockerExecutor} from '../src/docker-executor.mjs';
 const exec=promisify(execFile);const root=await mkdtemp(join(tmpdir(),'remotedesk-docker-test-'));await mkdir(join(root,'project'));const path=await realpath(join(root,'project')); 
 const state=new Map();const store={get(k,id){return k==='meta'?{id:'fixture-owner'}:state.get(k+':'+id);},put(k,id,v){state.set(k+':'+id,v);},delete(k,id){state.delete(k+':'+id);},all(k){return [...state.entries()].filter(([key])=>key.startsWith(k+':')).map(([,v])=>v);}};
-const image=(await exec('docker',['image','inspect','remotedesk-dsh-sandbox:0.2.0','--format','{{.Id}}'])).stdout.trim();const project={id:'test',path,image};const executor=new DockerExecutor(store);
+const image=process.env.REMOTEDESK_TEST_IMAGE??(await exec('docker',['image','inspect','remotedesk-dsh-sandbox:0.2.0','--format','{{.Id}}'])).stdout.trim();const project={id:'test',path,image};const executor=new DockerExecutor(store);
 const quote=s=>"'"+s.replaceAll("'","'\\''")+"'";
 try{
  await writeFile(join(root,'secret-canary.txt'),'PRIVATE_CANARY');await writeFile(join(path,'inside.txt'),'INSIDE');
@@ -16,6 +16,7 @@ try{
  // Symlink escape remains a container path, never a host filesystem read.
  const symlinkProgram=`const fs=require('fs');fs.symlinkSync(${JSON.stringify(join(root,'secret-canary.txt'))},'/workspace/link');try{fs.readFileSync('/workspace/link');process.exit(1);}catch{console.log('SYMLINK_BLOCKED');}`;
  assert.match((await executor.run(project,'node -e '+quote(symlinkProgram))).stdout,/SYMLINK_BLOCKED/);
+ const failed=await executor.run(project,"printf 'expected error' >&2; exit 7");assert.equal(failed.exitCode,7);assert.match(failed.stderr,/expected error/);const ro=await executor.run(project,"printf BAD > read-only-denied.txt",{readOnly:true});assert.notEqual(ro.exitCode,0);
  const controller=new AbortController();const running=executor.run(project,"node -e 'setInterval(()=>{},1000)'",{signal:controller.signal});setTimeout(()=>controller.abort(),600);await assert.rejects(running,/EXECUTION_CANCELLED|AbortError/);assert.equal(store.all('container').length,0);
  assert.equal((await exec('docker',['ps','-aq','--filter','label=org.remotedesk.owner=fixture-owner'])).stdout.trim(),'');
  console.log('PASS real Docker: non-root process, project write, outside-root/host secret/socket/symlink/network denial, cancellation and zero remaining owned containers');console.log('Tested image '+image);
