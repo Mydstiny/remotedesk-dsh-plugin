@@ -33,5 +33,6 @@ jobs:
       - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 pnpm@11.21.0
       - run: node bin/remotedesk-dsh.mjs doctor --json
       - run: node test/native-flow-runtime.mjs
+      - run: node test/native-shutdown-runtime.mjs
       - run: npm pack --ignore-scripts
       - run: node test/install-runtime.mjs

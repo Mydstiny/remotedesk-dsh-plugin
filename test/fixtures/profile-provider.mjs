@@ -1,4 +1,4 @@
-import { appendFile } from "node:fs/promises";
+import { appendFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { LlmAdapter } from "@deepseek-ai/dsh-llm";
 export const name = "remotedesk-profile-fixture";
@@ -37,6 +37,19 @@ class Fixture extends LlmAdapter {
         ),
       }) + "\n",
     );
+    if (JSON.stringify(options.messages).includes("DSH_PROFILE_STOP_ACTIVE")) {
+      await writeFile(
+        join(process.env.REMOTEDESK_PROFILE_TEST_ROOT, "active-entered"),
+        "ready",
+      );
+      yield { type: "block-start", index: 0, blockType: "text" };
+      yield { type: "text-delta", index: 0, text: "DSH_ACTIVE_PARTIAL" };
+      if (!options.signal.aborted)
+        await new Promise((r) =>
+          options.signal.addEventListener("abort", r, { once: true }),
+        );
+      return;
+    }
     const text = "DSH_PROFILE_FIXTURE_OK";
     yield { type: "block-start", index: 0, blockType: "text" };
     yield { type: "text-delta", index: 0, text };

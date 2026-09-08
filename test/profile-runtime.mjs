@@ -179,19 +179,24 @@ try {
       [native, "plugin", "--profile", profile, "add", join(root, fp.filename)],
       { env },
     );
-    let output = "";
-    const child = spawn(process.execPath, [cli, "serve", "--state", state], {
-      env,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    child.stdout.on("data", (d) => {
-      if (output.length < 1e6) output += d;
-    });
-    child.stderr.on("data", (d) => {
-      if (output.length < 1e6) output += d;
-    });
-    const exited = new Promise((resolve) => child.once("exit", resolve));
-    try {
+    let output = "",
+      child,
+      exited;
+    const start = () => {
+      output = "";
+      child = spawn(process.execPath, [cli, "serve", "--state", state], {
+        env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      child.stdout.on("data", (d) => {
+        if (output.length < 1e6) output += d;
+      });
+      child.stderr.on("data", (d) => {
+        if (output.length < 1e6) output += d;
+      });
+      exited = new Promise((resolve) => child.once("exit", resolve));
+    };
+    const ready = async () => {
       const until = Date.now() + 60000;
       while (
         !output.includes('"ready":true') &&
@@ -200,6 +205,18 @@ try {
       )
         await delay(100);
       assert.ok(output.includes('"ready":true'), "native profile must start");
+    };
+    const stop = async () => {
+      await requestStop(state);
+      await exited;
+      assert.equal(child.exitCode, 0, "native profile must exit cleanly");
+      await assert.rejects(access(join(state, "server.lock")), {
+        code: "ENOENT",
+      });
+    };
+    start();
+    try {
+      await ready();
       const directory = join(root, "client");
       await pairClient(directory, {
         url: "https://127.0.0.1:" + httpsPort,
@@ -285,10 +302,82 @@ try {
           "idle",
         );
       }
+      const beforeStop = (await client.read("session.read", { sessionId: id }))
+        .snapshot;
+      assert.equal(beforeStop.nextCursor, null);
+      await stop();
+      start();
+      await ready();
+      const { client: coldClient, handshake: coldHandshake } =
+        await loadClient(directory);
+      assert.equal(coldHandshake.instance, handshake.instance);
+      const restored = (
+        await coldClient.read("session.read", { sessionId: id })
+      ).snapshot;
+      assert.deepEqual(
+        restored.events,
+        beforeStop.events,
+        "cold native history must preserve every event",
+      );
+      const coldCall = (method, params) =>
+        coldClient.write(method, params, {
+          operationId: randomUUID(),
+          epoch: coldHandshake.epoch.id,
+        });
+      const coldLease = (await coldCall("lease.acquire", { sessionId: id }))
+        .result.lease;
+      assert.equal(
+        (await coldCall("session.resume", { sessionId: id, lease: coldLease }))
+          .status,
+        "succeeded",
+      );
+      assert.equal(
+        (
+          await coldCall("turn.start", {
+            sessionId: id,
+            lease: coldLease,
+            text: "DSH_PROFILE_STOP_ACTIVE",
+          })
+        ).status,
+        "succeeded",
+      );
+      const activeUntil = Date.now() + 30000;
+      let activeEntered = false;
+      while (Date.now() < activeUntil) {
+        try {
+          await access(join(root, "active-entered"));
+          activeEntered = true;
+          break;
+        } catch (error) {
+          if (error.code !== "ENOENT") throw error;
+        }
+        await delay(100);
+      }
+      assert.ok(activeEntered, "stop test must enter the native model stream");
+      await stop();
+      start();
+      await ready();
+      const { client: afterActive } = await loadClient(directory);
+      const activeHistory = (
+        await afterActive.read("session.read", { sessionId: id })
+      ).snapshot;
+      const userEvent = activeHistory.events.findLast(
+        (e) =>
+          e.type === "user/message" &&
+          JSON.stringify(e).includes("DSH_PROFILE_STOP_ACTIVE"),
+      );
+      assert.ok(userEvent);
+      assert.ok(
+        activeHistory.events.some(
+          (e) => e.type === "turn/end" && e.seq > userEvent.seq,
+        ),
+        "managed stop must persist the active turn's final event",
+      );
+      await stop();
       console.log(
         "PASS native packed DSH profile " +
           profile +
-          ": mTLS sessions, model turns, archive/resume, native remote tools and native project instructions" +
+          ": mTLS sessions, model turns, archive/resume, clean shutdown and cold native history, native remote tools and native project instructions" +
           (profile === "web" ? ", local standard instructions preserved" : ""),
       );
     } catch (e) {

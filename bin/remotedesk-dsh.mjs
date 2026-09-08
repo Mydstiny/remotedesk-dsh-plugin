@@ -13,7 +13,12 @@ import { main } from "@remotedesk/bridge-core/cli";
 import { requireThat } from "@remotedesk/bridge-core/errors";
 import { doctor, locateRuntime } from "../src/doctor.mjs";
 const executable = async () => join(await locateRuntime(), "lib", "bin.js");
+let shutdown;
 await main({
+  stop: async (state) => {
+    requireThat(shutdown, "NATIVE_SHUTDOWN_NOT_READY");
+    await shutdown(state);
+  },
   engine: "dsh",
   entry: fileURLToPath(import.meta.url),
   doctor,
@@ -59,6 +64,9 @@ await main({
         installedPackage.version === launcherPackage.version,
       "NATIVE_PLUGIN_INSTALL_VERSION_MISMATCH",
     );
+    ({ shutdown } = await import(
+      pathToFileURL(join(installedRoot, "src/index.mjs")).href
+    ));
     const patch = await readNativeProfileOverlay(
       {
         runtime: await locateRuntime(),

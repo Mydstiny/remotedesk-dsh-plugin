@@ -20,9 +20,9 @@
       "version": "0.3.0",
       "license": "MIT",
       "archive": "vendor/remotedesk-bridge-core-0.3.0.tgz",
-      "sha256": "7f646214059bb569a21fd6993e689e0d3e2c0fe08578ab04bf65ee47cd35f114",
+      "sha256": "a0c5078f13eee9a2230b7f57ad8d9a85cb8808f35ea13aecbf33b3aa75cbfaeb",
       "source": "https://github.com/Mydstiny/remotedesk-codex-plugin",
-      "sourceCommit": "8913dd515bf081fde7bde408946a958f0882b5c6",
+      "sourceCommit": "061ec9e426e896611a45fe306a1a79a6b8511139",
       "sourceDirectory": "packages/bridge-core",
       "bundled": true
     }
@@ -343,6 +343,15 @@
       "packageJsonSha256": "0f70dac8c3d8dcfebeee2b8568f64fc23edb4c4ae3ea6c0015dfd693df335bb9",
       "publicDeclaration": "lib/types/index.d.ts",
       "publicDeclarationSha256": "5622c24fc8768b3466e20dcffadeb5fa449d03040bc10db76c466d401b826a29",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-cmdline",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "932a17c653bd06bb09b7b15f058b63d12d4a8832d4f54578bf09955e42be8d17",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "136135da4d83f55dae0c7de783ef17501eb60e0fd12017f6393cb3fb6048d0c0",
       "redistributed": false
     }
   ],

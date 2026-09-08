@@ -1,6 +1,7 @@
 import { assertProfile } from "./profile-policy.mjs";
 import { locateRuntime } from "./doctor.mjs";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { createRequire } from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -269,8 +270,24 @@ export class DshAdapter {
     const h = this.handles.get(s.id);
     return h && h.agent === agent && this.ctx.agents.get(s.id) === agent;
   }
-  setup(s, p, selection) {
+  setup(s, p, selection, lifecycle) {
     return async (agentCtx) => {
+      const owner = agentCtx.agent,
+        jobs = this.ctx.jobs;
+      // Scope teardown captures native job outcomes before registry cleanup;
+      // normal running jobs retain their native reporting behavior.
+      agentCtx.effect(
+        () => () => {
+          lifecycle.jobs = Promise.allSettled(
+            jobs
+              .list(owner)
+              .filter((job) => job.ownerSession === owner.id)
+              .map((job) => jobs.wait(job.id, 10000, owner)),
+          );
+          return lifecycle.jobs;
+        },
+        "RemoteDesk native teardown audit",
+      );
       const preset = await this.ctx.agentPresets.resolve(this.preset);
       requireThat(
         (await realpath(preset.path)) ===
@@ -576,7 +593,8 @@ export class DshAdapter {
     if (this.loading.has(s.id)) return this.loading.get(s.id);
     const pending = (async () => {
       const current = await this.selection(p, s),
-        selection = { current, assembled: undefined };
+        selection = { current, assembled: undefined },
+        lifecycle = {};
       const info = await this.ctx.llm.resolveModelInfo(
         current.provider,
         current.model,
@@ -585,7 +603,7 @@ export class DshAdapter {
       authorize();
       const opts = {
         agentOptions: current,
-        setup: this.setup(s, p, selection),
+        setup: this.setup(s, p, selection, lifecycle),
       };
       let handle;
       try {
@@ -608,6 +626,7 @@ export class DshAdapter {
           throw new Fault("ADAPTER_DISPOSED");
         }
         handle.selection = selection;
+        handle.lifecycle = lifecycle;
         handle.session = s;
         this.handles.set(s.id, handle);
         this.checkpoint(s, {
@@ -1053,11 +1072,60 @@ export class DshAdapter {
   async closeInternal() {
     if (this.closed) return;
     this.closing = true;
+    const persistence = this.ctx.sessionPersistence;
+    const jobs = this.ctx.jobs;
+    const terminals = this.ctx.get("terminals");
+    for (const h of this.handles.values()) h.authorize = undefined;
+    for (const run of this.runs.values()) {
+      run.cancelled = true;
+      run.controller.abort();
+    }
     await Promise.allSettled([...this.loading.values()]);
     const results = await Promise.allSettled(
       [...this.handles.values()].map(async (h) => {
-        await this.cancel(h.session);
-        await this.deactivate(h.session);
+        const run = this.runs.get(h.session.id);
+        if (run) {
+          run.cancelled = true;
+          run.controller.abort();
+          await run.ready;
+        }
+        h.authorize = undefined;
+        // The native memoized disposer cancels, waits for idle, releases the
+        // agent scope and detaches its session. Root shutdown may already be
+        // running it; flushing a detached live session would race that teardown.
+        await h.dispose();
+        if (run?.maintenance) await run.maintenance.catch(() => {});
+        if (run?.done) await run.done;
+        const expected = h.agent.session.snapshotEvents();
+        // readFrom joins native retirement persistence before reading disk.
+        const stored = await persistence.readFrom(h.agent.id, 0);
+        requireThat(
+          isDeepStrictEqual(stored.events, expected),
+          "NATIVE_SESSION_PERSISTENCE_UNCONFIRMED",
+        );
+        requireThat(h.lifecycle.jobs, "NATIVE_TEARDOWN_AUDIT_MISSING");
+        const settled = await h.lifecycle.jobs;
+        requireThat(
+          settled.every(
+            (r) =>
+              r.status === "fulfilled" &&
+              r.value &&
+              ["completed", "killed"].includes(r.value.status),
+          ),
+          "TERMINAL_STOP_UNCONFIRMED",
+        );
+        requireThat(
+          !jobs
+            .list(h.agent)
+            .some(
+              (job) =>
+                job.ownerSession === h.agent.id && ACTIVE.has(job.status),
+            ) && !terminals?.hasOwnerActivity(h.agent),
+          "TERMINAL_STOP_UNCONFIRMED",
+        );
+        if (this.runs.get(h.session.id) === run) this.runs.delete(h.session.id);
+        this.core.storage.delete("nativeActivity", h.session.id);
+        this.handles.delete(h.session.id);
       }),
     );
     this.closed = true;
