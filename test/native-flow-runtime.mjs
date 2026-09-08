@@ -22,6 +22,7 @@ import { pairClient, loadClient } from "@remotedesk/bridge-core/client";
 import { DshAdapter } from "../src/dsh-adapter.mjs";
 import { locateRuntime } from "../src/doctor.mjs";
 import { boot } from "./native-host.mjs";
+const originalCwd = process.cwd();
 const root = await realpath(
   await mkdtemp(join(tmpdir(), "remotedesk-dsh-native-flow-")),
 );
@@ -345,6 +346,7 @@ try {
   } finally {
     await local?.dispose();
     await ctx.fiber.dispose();
+    process.chdir(originalCwd);
     await rm(root, {
       recursive: true,
       force: true,
