@@ -63,6 +63,7 @@ class Fixture extends LlmAdapter {
     const current = action;
     action = current?.next;
     if (current?.hang) {
+      current.entered = true;
       if (!options.signal.aborted)
         await new Promise((r) =>
           options.signal.addEventListener("abort", r, { once: true }),
@@ -296,13 +297,16 @@ try {
     (await client.read("session.read", { sessionId: forked.result.sessionId }))
       .snapshot.events.length,
   );
-  action = { hang: true };
+  const cancelledResponse = { hang: true, entered: false };
+  action = cancelledResponse;
   await call("turn.start", {
     sessionId: id,
     lease,
     text: "Cancel the native provider wait.",
   });
-  await waitFor(() => ctx.agents.get(id).status === "running");
+  await waitFor(() => cancelledResponse.entered);
+  assert.equal(ctx.agents.get(id).status, "running");
+  assert.equal(action, undefined);
   assert.equal(
     (await call("turn.cancel", { sessionId: id, lease })).status,
     "succeeded",
@@ -341,6 +345,11 @@ try {
   } finally {
     await local?.dispose();
     await ctx.fiber.dispose();
-    await rm(root, { recursive: true, force: true });
+    await rm(root, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
   }
 }
