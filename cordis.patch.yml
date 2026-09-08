@@ -1,3 +1,3 @@
 - insert:
     - id: remotedesk-bridge
-      name: '@remotedesk/dsh-plugin'
+      name: "@remotedesk/dsh-plugin"

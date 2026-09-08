@@ -1,6 +1,6 @@
-RemoteDesk DSH Plugin 0.2.0
+RemoteDesk DSH Plugin 0.3.0
 Original integration, protocol, reference client and bridge code: Copyright 2026 Mydstiny, MIT.
-The bundled @remotedesk/bridge-core 0.2.0 is original MIT code from Mydstiny/remotedesk-codex-plugin; its LICENSE accompanies the bundle. Source commit and tarball hash are recorded in docs/provenance.json.
-Upstream engines, Node.js, OpenSSL, Docker and container image software are externally installed and retain their own licenses and terms; their binaries are not redistributed in this plugin.
-The included Dockerfile references an official Node image by digest; built container images are not included in the release.
-See docs/provenance.json for the interface evidence and exact versions.
+Upstream engines, Node.js and OpenSSL are externally installed; their binaries are not redistributed.
+Bundled bridge-core is original MIT code from Mydstiny/remotedesk-codex-plugin.
+The derived standard agent preset is Copyright (c) 2026 DeepSeek, MIT; see presets/LICENSE.DeepSeek.
+See docs/provenance.json for exact sources, versions and hashes.
