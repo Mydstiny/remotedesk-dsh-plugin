@@ -12,8 +12,10 @@ import { spawn } from "node:child_process";
 import { main } from "@remotedesk/bridge-core/cli";
 import { requireThat } from "@remotedesk/bridge-core/errors";
 import { doctor, locateRuntime } from "../src/doctor.mjs";
+import { runControlPanel } from "../src/control-panel.mjs";
 const executable = async () => join(await locateRuntime(), "lib", "bin.js");
 let shutdown;
+const showHelp = !process.argv[2] || process.argv[2] === "help";
 await main({
   stop: async (state) => {
     requireThat(shutdown, "NATIVE_SHUTDOWN_NOT_READY");
@@ -99,6 +101,11 @@ await main({
     await import(pathToFileURL(bin).href);
   },
   extra: async (command, state, config, o) => {
+    if (command === "panel") {
+      const port = o.port === undefined ? undefined : Number(o.port);
+      await runControlPanel(state, { engine: "dsh", port });
+      return true;
+    }
     if (command !== "plugin-install") return false;
     const profile = o.profile ?? "remotedesk";
     requireThat(/^[a-zA-Z0-9_-]{1,40}$/.test(profile), "PROFILE_INVALID");
@@ -210,3 +217,7 @@ await main({
     return true;
   },
 });
+if (showHelp)
+  console.log(
+    "panel: [--port <loopback port>] (default 9544); API requires the one-time Authorization token printed in the local URL",
+  );
