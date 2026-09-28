@@ -30,7 +30,7 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci --ignore-scripts
-      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 pnpm@11.21.0
+      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 @deepseek-ai/cordis@4.0.2 pnpm@11.21.0
       - run: node bin/remotedesk-dsh.mjs doctor --json
       - run: node test/native-flow-runtime.mjs
       - run: node test/native-shutdown-runtime.mjs
