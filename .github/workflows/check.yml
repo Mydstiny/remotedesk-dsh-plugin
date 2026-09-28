@@ -33,7 +33,7 @@ jobs:
       - name: Install pinned DSH runtime
         env:
           DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime
-        run: node -e "const {spawnSync}=require('node:child_process'); const fs=require('node:fs'); const path=require('node:path'); const npm=process.platform==='win32'?'npm.cmd':'npm'; const root=process.env.DSH_RUNTIME_ROOT; fs.mkdirSync(root,{recursive:true}); fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({private:true,overrides:{'@deepseek-ai/cordis':'4.0.2'}})); const r=spawnSync(npm,['install','--prefix',root,'--no-audit','--no-fund','@deepseek-ai/dsh@0.1.2-rc.1','@deepseek-ai/cordis@4.0.2','pnpm@11.21.0'],{stdio:'inherit'}); process.exit(r.status ?? 1)"
+        run: node -e "const {spawnSync}=require('node:child_process'); const fs=require('node:fs'); const path=require('node:path'); const npm=process.platform==='win32'?'npm.cmd':'npm'; const root=process.env.DSH_RUNTIME_ROOT; fs.mkdirSync(root,{recursive:true}); fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({private:true,overrides:{'@deepseek-ai/cordis':'4.0.2'}})); const r=spawnSync(npm,['install','--prefix',root,'--no-audit','--no-fund','@deepseek-ai/dsh@0.1.2-rc.1','pnpm@11.21.0'],{stdio:'inherit'}); process.exit(r.status ?? 1)"
       - name: Add pinned DSH runtime to PATH
         env:
           DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime
