@@ -30,7 +30,14 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci --ignore-scripts
-      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 @deepseek-ai/cordis@4.0.2 pnpm@11.21.0
+      - name: Install pinned DSH runtime
+        env:
+          DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime
+        run: node -e "const {spawnSync}=require('node:child_process'); const npm=process.platform==='win32'?'npm.cmd':'npm'; const r=spawnSync(npm,['install','--prefix',process.env.DSH_RUNTIME_ROOT,'--no-audit','--no-fund','@deepseek-ai/dsh@0.1.2-rc.1','@deepseek-ai/cordis@4.0.2','pnpm@11.21.0'],{stdio:'inherit'}); process.exit(r.status ?? 1)"
+      - name: Add pinned DSH runtime to PATH
+        env:
+          DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime
+        run: node -e "const fs=require('node:fs'); const path=require('node:path'); const os=require('node:os'); const root=process.env.DSH_RUNTIME_ROOT; const dirs=process.platform==='win32'?[root,path.join(root,'bin')]:[path.join(root,'bin'),root]; fs.appendFileSync(process.env.GITHUB_PATH,dirs.join(os.EOL)+os.EOL)"
       - run: node bin/remotedesk-dsh.mjs doctor --json
       - run: node test/native-flow-runtime.mjs
       - run: node test/native-shutdown-runtime.mjs
