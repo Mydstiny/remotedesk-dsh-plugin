@@ -4,7 +4,19 @@ import { assertProfile } from "./profile-policy.mjs";
 import { Bridge } from "@remotedesk/bridge-core";
 import { doctor } from "./doctor.mjs";
 import { DshAdapter } from "./dsh-adapter.mjs";
-const hosts = new Map();
+// DSH can load the package once for the launcher and once through the profile
+// loader. Keep the lifecycle registry process-wide so the launcher's stop
+// callback reaches the Bridge instance created by the mounted plugin.
+const hosts =
+  globalThis[Symbol.for("remotedesk.dsh.bridge.hosts")] ??=
+    new Map();
+const scheduleProcessExit = (code) => {
+  // DSH's appExit records the exit code and starts profile disposal, but some
+  // upstream watchers can keep the process alive after the bridge is closed.
+  // Keep the normal disposal path and bound the remaining process lifetime.
+  const timer = setTimeout(() => process.exit(code), 5000);
+  timer.unref();
+};
 export async function shutdown(directory) {
   const host = hosts.get(resolve(directory));
   requireThat(host, "NATIVE_SHUTDOWN_NOT_READY");
@@ -12,9 +24,11 @@ export async function shutdown(directory) {
     await host.bridge.stop();
   } catch (error) {
     host.exit(1);
+    scheduleProcessExit(1);
     throw error;
   }
   host.exit(0);
+  scheduleProcessExit(0);
 }
 export const name = "remotedesk-bridge";
 export const inject = [

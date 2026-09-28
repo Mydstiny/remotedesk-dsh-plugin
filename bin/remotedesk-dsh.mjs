@@ -48,6 +48,29 @@ await main({
         ),
       "DSH_PROFILE_HOME_CHANGED",
     );
+    if (launch.ownedProfile === true) {
+      const profileManifestPath = join(launch.profilePath, "package.json");
+      const profileManifest = JSON.parse(
+        await readFile(profileManifestPath, "utf8"),
+      );
+      const profile = profileManifest.dsh?.profile ?? {};
+      if (profile.patchReload !== "startup") {
+        await writeFile(
+          profileManifestPath,
+          JSON.stringify(
+            {
+              ...profileManifest,
+              dsh: {
+                ...profileManifest.dsh,
+                profile: { ...profile, patchReload: "startup" },
+              },
+            },
+            null,
+            2,
+          ) + "\n",
+        );
+      }
+    }
     process.argv = [process.execPath, bin, "--profile", launch.profile];
     const profileRequire = createRequire(
       join(launch.profilePath, "package.json"),
