@@ -20,6 +20,8 @@ jobs:
       - run: npm pack --dry-run --ignore-scripts
   native-dsh:
     runs-on: ${{ matrix.os }}
+    env:
+      REMOTEDESK_DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime/node_modules/@deepseek-ai/dsh
     strategy:
       fail-fast: false
       matrix:

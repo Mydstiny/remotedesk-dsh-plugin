@@ -8,7 +8,14 @@ const compatibility = JSON.parse(
 );
 const metadata = async (path) => JSON.parse(await readFile(path, "utf8"));
 
-export async function locateRuntime() {
+export async function locateRuntime({ runtimeRoot } = {}) {
+  const explicitRoot = runtimeRoot ?? process.env.REMOTEDESK_DSH_RUNTIME_ROOT;
+  if (explicitRoot) {
+    const root = await realpath(explicitRoot);
+    if ((await metadata(join(root, "package.json"))).name === "@deepseek-ai/dsh")
+      return root;
+    throw new Error("NOT_DSH_INSTALLATION");
+  }
   // Only inspect the executable installation, never user profiles or sessions.
   for (const directory of (process.env.PATH ?? "")
     .split(delimiter)
