@@ -4,6 +4,8 @@
 
 Web 设置页额外消费两个上游契约，并按精确版本一并锁定：连接插件的 `/api` 精确 Fetch 路由注册点（`ctx.connection.fetch.register`，路由继承其 Host/Origin 校验与浏览器会话认证），以及客户端模块的 `dsh.client` bundle 契约（包内 `./client` 由 `/plugins` 提供给浏览器）。两者都在 `compatibility.json` 的组件门内；任一版本漂移时 `doctor` 仍然拒绝启动。
 
+这两个注册契约在 **0.1.2-rc.1 与 0.2.0-rc.2** 上形状一致，唯一差异是 0.2.0 起由路由的 `requestBody` 字段选择请求体模式，因此本插件的路由显式声明 `requestBody: 'buffered'`，两个版本都正确。这一点在实际部署中必须成立：DSH CLI 可以停在 0.1.2-rc.1，而桌面应用自带 0.2.0-rc.2 runtime，同一个 profile 会被两者之一引导。原生桥接的组件门仍按 [compatibility.json](../compatibility.json) 固定为 0.1.2-rc.1。
+
 | 检查 | 覆盖 |
 | --- | --- |
 | 源码 CI | Windows/macOS/Linux，Node 22/24/26；协议、mTLS、授权、状态、路径和生命周期回归 |

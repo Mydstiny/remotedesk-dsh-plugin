@@ -14,6 +14,11 @@ const SEGMENT = /^[A-Za-z0-9_$.-]+$/;
 function assertRegistrable(routes) {
   for (const route of routes) {
     assert.equal(typeof route.fetch, "function", route.path);
+    // The Connection plugin picks the request-body mode from this field. A route
+    // that omits it takes the streaming path on newer runtimes, where building a
+    // body stream for a body-less method throws and the Web server answers its
+    // generic empty 400 instead of ever reaching the handler.
+    assert.equal(route.requestBody, "buffered", route.path);
     assert.equal(route.path.startsWith("/api/"), true, route.path);
     const endpoint = route.path.slice("/api/".length);
     for (const segment of endpoint.split("/"))
