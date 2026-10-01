@@ -27,6 +27,7 @@ DSH 面板使用上面的命令；如果同时部署 Codex，请在 Codex state 
 把插件装进带 Web 界面的 DSH profile 后，**设置**里会多出一页 `RemoteDesk`：同一批信息（服务状态、项目、已配对设备、配对码）以原生设置页形式呈现，另有一个按钮跳转到上面的独立本机面板。
 
 - 页面数据来自插件自己注册的精确 Fetch 路由：`GET /api/remotedesk.status`，以及 `POST /api/remotedesk.invite`、`/api/remotedesk.revoke`、`/api/remotedesk.project`、`/api/remotedesk.panel`。它们挂在 DSH 连接插件的 `/api` 前缀下，因此**继承同一套 Host/Origin 校验与浏览器会话 cookie 认证**；插件不自建第二套令牌，也不豁免任何一条路由。`connection.fetch.register` 不可用时，插件跳过注册并打印一行 JSON 说明，绝不退化成未认证路由。
+- 每条路由都显式声明 `requestBody: 'buffered'`。较新的 runtime（例如桌面应用自带的 0.2.0-rc.2）用该字段决定把 socket 交给路由的方式：缺省时会走 streaming 分支，为无 body 的方法构造带 body 流的 Request 会抛错，而 Web 服务器对抛错的路由只回一个**空 body 的 400**，页面因此显示 `HTTP_400` 而不是任何可读的错误码。较早的 runtime（0.1.2-rc.1）忽略该字段并始终缓冲，所以显式声明对两者都正确。
 - 配对码只在生成时返回一次。邀请行以 `digest(code)` 为键，磁盘上无法反推 code，所以刷新页面不会重新显示已生成的配对码；`status` 只报告未过期邀请的到期时间、角色与授权项目。
 - 「打开本机控制面板」会按需启动或复用进程内的回环面板，并把带一次性令牌的 URL 交给浏览器新标签页打开。默认端口（DSH 为 9544）被占用时，自动改用系统分配的空闲回环端口。
 - 没有显式配置 state 目录时（例如把插件同时装进日常使用的 Web profile），插件进入**管理门面**模式：只用 `$HOME/.remotedesk/dsh` 提供上述已认证路由，**不会**再启动一个 bridge，也不会打开任何监听。state 尚未初始化时，页面提示先用 `panel` 命令或原生 host 启动一次服务。

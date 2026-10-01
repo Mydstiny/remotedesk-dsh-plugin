@@ -176,6 +176,14 @@ export async function webSnapshot(state, engine) {
 
 /**
  * Build the exact Fetch routes for one state directory.
+ *
+ * Every route declares `requestBody: 'buffered'`. The Connection plugin reads
+ * that field to decide how it hands the socket to the route: without it, a
+ * newer runtime takes the streaming path and builds a Request carrying a body
+ * stream, which throws for a body-less method — the Web server then answers its
+ * generic empty 400. Runtimes that predate the field ignore it and always
+ * buffer, so declaring it is correct on both.
+ *
  * @param state - plugin state directory.
  * @param engine - engine this deployment serves.
  * @returns route contributions accepted by `ctx.connection.fetch.register`.
@@ -192,11 +200,13 @@ export function webRoutes(state, engine) {
     {
       path: WEB_ROUTES.status,
       methods: ["GET"],
+      requestBody: "buffered",
       fetch: guard(async () => jsonResponse(await webSnapshot(state, engine))),
     },
     {
       path: WEB_ROUTES.invite,
       methods: ["POST"],
+      requestBody: "buffered",
       fetch: guard(async (request) => {
         const input = await readJson(request);
         if (!Array.isArray(input.projects) || input.projects.length === 0)
@@ -209,6 +219,7 @@ export function webRoutes(state, engine) {
     {
       path: WEB_ROUTES.revoke,
       methods: ["POST"],
+      requestBody: "buffered",
       fetch: guard(async (request) => {
         const input = await readJson(request);
         if (typeof input.device !== "string" || input.device === "")
@@ -219,6 +230,7 @@ export function webRoutes(state, engine) {
     {
       path: WEB_ROUTES.project,
       methods: ["POST"],
+      requestBody: "buffered",
       fetch: guard(async (request) => {
         const input = await readJson(request);
         if (typeof input.id !== "string" || typeof input.path !== "string")
@@ -236,6 +248,7 @@ export function webRoutes(state, engine) {
     {
       path: WEB_ROUTES.panel,
       methods: ["POST"],
+      requestBody: "buffered",
       fetch: guard(async () => jsonResponse(await ensureControlPanel(state, { engine }))),
     },
   ];
