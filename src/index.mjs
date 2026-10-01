@@ -4,6 +4,8 @@ import { assertProfile } from "./profile-policy.mjs";
 import { Bridge } from "@remotedesk/bridge-core";
 import { doctor } from "./doctor.mjs";
 import { DshAdapter } from "./dsh-adapter.mjs";
+import { ensureControlPanel } from "./control-panel.mjs";
+import { registerWebPanel, webSnapshot, defaultStateDirectory } from "./web-panel.mjs";
 // DSH can load the package once for the launcher and once through the profile
 // loader. Keep the lifecycle registry process-wide so the launcher's stop
 // callback reaches the Bridge instance created by the mounted plugin.
@@ -52,9 +54,16 @@ export const inject = [
 export async function apply(ctx, config = {}) {
   const directory = config.stateDirectory ?? process.env.REMOTEDESK_DSH_STATE;
   if (!directory) {
+    // Management-only deployment: another process owns the bridge, so this
+    // profile contributes the authenticated Web surface for that state and
+    // never opens a listener of its own.
+    const state = defaultStateDirectory();
     ctx.provide("remotedeskBridge", {
-      status: () => ({ configured: false, listening: false }),
+      status: () => ({ configured: false, listening: false, state }),
+      snapshot: () => webSnapshot(state, "dsh"),
+      panel: () => ensureControlPanel(state, { engine: "dsh" }),
     });
+    registerWebPanel(ctx, { state, engine: "dsh" });
     return;
   }
   if ((await doctor()).status !== "ok")
@@ -77,11 +86,16 @@ export async function apply(ctx, config = {}) {
   });
   await bridge.start();
   console.log(JSON.stringify({ ready: true, engine: "dsh", protocol: 1 }));
+  // Web settings surface: contributed only when this deployment provides a
+  // Connection service, so the native remote profile is unaffected.
+  registerWebPanel(ctx, { state: directory, engine: "dsh" });
   ctx.provide("remotedeskBridge", {
     status: () => ({
       configured: true,
       listening: !bridge.stopping,
       protocol: 1,
     }),
+    snapshot: () => webSnapshot(directory, "dsh"),
+    panel: () => ensureControlPanel(directory, { engine: "dsh" }),
   });
 }

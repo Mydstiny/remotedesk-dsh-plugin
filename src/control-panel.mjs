@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { configuration, addProject, invite, revoke, status } from "@remotedesk/bridge-core/admin";
 import { Store } from "@remotedesk/bridge-core/store";
 import { privateDirectory } from "@remotedesk/bridge-core/privacy";
@@ -138,7 +138,7 @@ async function body(req) {
   }
 }
 
-async function serviceState(state) {
+export async function serviceState(state) {
   let lock;
   try {
     lock = JSON.parse(await readFile(join(state, "server.lock"), "utf8"));
@@ -156,13 +156,15 @@ async function serviceState(state) {
   }
 }
 
-async function snapshot(state, engine, panelPort) {
-  const config = await configuration(state);
-  const current = status(state);
+/**
+ * Project the paired-device rows the panel and the Web settings page share.
+ * @param state - plugin state directory.
+ * @returns device summaries, oldest first, with derived expiry status.
+ */
+export async function deviceSummaries(state) {
   const store = new Store(state);
-  let devices;
   try {
-    devices = store.all("device").map((device) => {
+    return store.all("device").map((device) => {
       const expires = Number.isSafeInteger(device.expires) ? device.expires : null;
       return {
         id: device.id,
@@ -177,6 +179,12 @@ async function snapshot(state, engine, panelPort) {
   } finally {
     store.close();
   }
+}
+
+async function snapshot(state, engine, panelPort) {
+  const config = await configuration(state);
+  const current = status(state);
+  const devices = await deviceSummaries(state);
   return {
     engine,
     panel: { host: "127.0.0.1", port: panelPort },
@@ -297,4 +305,54 @@ export async function runControlPanel(state, { engine, port } = {}) {
     process.once("SIGTERM", stop);
   });
   await panel.close();
+}
+
+/**
+ * The single control panel this process keeps alive for the Web settings page.
+ * The panel command owns its own process; this manager serves the embedded
+ * case, where one page asks to open the panel without a terminal.
+ */
+let activePanel;
+
+/**
+ * Start the loopback panel, or reuse the one already serving this state.
+ * @param state - plugin state directory.
+ * @param options - engine and optional loopback port (0 picks a free port).
+ * @returns the panel URL plus whether an existing instance was reused.
+ */
+export async function ensureControlPanel(state, { engine, port } = {}) {
+  const key = resolve(state);
+  if (activePanel !== undefined && activePanel.key === key && activePanel.engine === engine)
+    return { url: activePanel.panel.url, port: activePanel.panel.port, reused: true };
+  await stopControlPanel();
+  let panel;
+  try {
+    panel = await startControlPanel(state, { engine, port });
+  } catch (error) {
+    // The operator may already run `panel` on this engine's default port. Fall
+    // back to an OS-assigned loopback port instead of failing the request; an
+    // explicitly requested port still fails loudly.
+    if (port !== undefined || error?.code !== "EADDRINUSE") throw error;
+    panel = await startControlPanel(state, { engine, port: 0 });
+  }
+  activePanel = { key, engine, panel };
+  return { url: panel.url, port: panel.port, reused: false };
+}
+
+/** Close the process-owned panel, if one is running. */
+export async function stopControlPanel() {
+  if (activePanel === undefined) return;
+  const { panel } = activePanel;
+  activePanel = undefined;
+  await panel.close();
+}
+
+/**
+ * Report the process-owned panel without revealing its token.
+ * @returns running flag and loopback port.
+ */
+export function controlPanelState() {
+  return activePanel === undefined
+    ? { running: false, port: null }
+    : { running: true, port: activePanel.panel.port };
 }

@@ -11,8 +11,10 @@ import { init, configuration } from "@remotedesk/bridge-core/admin";
 import { requestStop } from "@remotedesk/bridge-core/service";
 const exec = promisify(execFile),
   source = dirname(dirname(fileURLToPath(import.meta.url)));
+// Derived from the manifest so a version bump cannot strand this default.
+const manifest = JSON.parse(await readFile(join(source, "package.json"), "utf8"));
 const archive = resolve(
-  process.argv[2] ?? join(source, "remotedesk-dsh-plugin-0.3.0.tgz"),
+  process.argv[2] ?? join(source, `remotedesk-dsh-plugin-${manifest.version}.tgz`),
 );
 await access(archive);
 const root = await mkdtemp(join(tmpdir(), "remotedesk-native-install-")),

@@ -15,4 +15,6 @@ node bin/remotedesk-dsh.mjs help
 
 默认监听 `127.0.0.1:9444`。注册 skill/bundle 本身不会开放监听；实际服务、模型账号及客户端连接需要各自验收。首次部署可把 [代理安装说明](docs/agent-deploy.md) 交给本机助手执行。
 
+装进带 Web 界面的 DSH profile 后，**设置**里会多出一页 `RemoteDesk`：服务状态、项目、已配对设备与配对码生成，外加一个跳转到本机控制面板的按钮。它只使用 DSH 已认证的 `/api` 通道，没有显式 state 配置时不会启动第二个 bridge。细节见 [本机控制面板](docs/control-panel.md#在-dsh-web-设置里使用)。
+
 [English](README.en.md) · [本机控制面板](docs/control-panel.md) · [协议](docs/protocol.md) · [兼容性与验证](docs/compatibility.md) · [依赖来源](docs/provenance.json) · [鸿蒙开发边界](docs/roadmap.md)
