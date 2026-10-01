@@ -6,4 +6,6 @@ Requires Node **22.16+**, OpenSSL 3 and DeepSeek Harness **0.1.2-rc.1**, plus pn
 
 Read [native permission boundaries](SECURITY.md), then follow [installation and operations](docs/operations.md). Verify the release archive against SHA256SUMS before extracting to a persistent version directory. The listener defaults to loopback port 9444; installing the plugin alone does not start it. The [local control panel](docs/control-panel.md) is started explicitly and remains loopback-only.
 
+Installed into a Web-enabled DSH profile, the plugin also adds a `RemoteDesk` page to **Settings**: service state, projects, paired devices and pairing-code generation, plus a button that opens the local control panel. It uses only the authenticated DSH `/api` channel and never starts a second bridge when no state directory is configured.
+
 The core workflow follows native engine behavior. Read access, approved escalation, networking and detached processes are not container-isolated. Host extensions and delegated agents are unavailable in this release. HarmonyOS UI, device pairing and RustDesk transport remain separate client integration gates.

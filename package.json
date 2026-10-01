@@ -8,7 +8,8 @@
     "node": ">=22.16.0"
   },
   "exports": {
-    ".": "./src/index.mjs"
+    ".": "./src/index.mjs",
+    "./client": "./lib/client.js"
   },
   "bin": {
     "remotedesk-dsh": "bin/remotedesk-dsh.mjs"
@@ -16,6 +17,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings"
+      ],
+      "platform": "web"
     }
   },
   "scripts": {
@@ -25,6 +33,7 @@
   "files": [
     "bin",
     "src",
+    "lib",
     "docs",
     "cordis.patch.yml",
     "compatibility.json",

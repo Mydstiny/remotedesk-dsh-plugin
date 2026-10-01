@@ -353,6 +353,26 @@
       "publicDeclaration": "lib/types/index.d.ts",
       "publicDeclarationSha256": "136135da4d83f55dae0c7de783ef17501eb60e0fd12017f6393cb3fb6048d0c0",
       "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-client-connection",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "bc6cace35753134e64f70f589bcb27601b49a9c44f47be1cb017e1040c210aa2",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "25b132781ad4ea429e92c998ee6962e3fc0c7a88050e4e3199d427e1ffb9e37b",
+      "consumedContract": "HostConnectionService.fetch.register: exact GET/POST Fetch routes under the authenticated /api prefix",
+      "redistributed": false
+    },
+    {
+      "name": "@deepseek-ai/dsh-client-modules",
+      "version": "0.1.2-rc.1",
+      "license": "MIT",
+      "packageJsonSha256": "5638af875c9b408ed3ecb5040c92a12f6a0cb615a4668da0ceeb673316c41d75",
+      "publicDeclaration": "lib/types/index.d.ts",
+      "publicDeclarationSha256": "eb1c328a1a8e17f9c79a5a6843047cd9b1c54e1e8ed565532690e48ff764f8fb",
+      "consumedContract": "dsh.client declaration: package ./client bundle served under /plugins and loaded into the frozen platform module table",
+      "redistributed": false
     }
   ],
   "cliVersion": "0.1.2-rc.1",

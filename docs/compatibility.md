@@ -2,6 +2,8 @@
 
 版本 **0.3.0 / protocol major 1**，DeepSeek Harness **0.1.2-rc.1**；Node.js 22.16+、OpenSSL 3。精确组件门见 [compatibility.json](../compatibility.json)。使用原生沙箱，无容器运行时依赖。
 
+Web 设置页额外消费两个上游契约，并按精确版本一并锁定：连接插件的 `/api` 精确 Fetch 路由注册点（`ctx.connection.fetch.register`，路由继承其 Host/Origin 校验与浏览器会话认证），以及客户端模块的 `dsh.client` bundle 契约（包内 `./client` 由 `/plugins` 提供给浏览器）。两者都在 `compatibility.json` 的组件门内；任一版本漂移时 `doctor` 仍然拒绝启动。
+
 | 检查 | 覆盖 |
 | --- | --- |
 | 源码 CI | Windows/macOS/Linux，Node 22/24/26；协议、mTLS、授权、状态、路径和生命周期回归 |

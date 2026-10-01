@@ -37,7 +37,9 @@
     "@deepseek-ai/dsh-tool-bash": "0.1.2-rc.1",
     "@deepseek-ai/dsh-tool-pwsh": "0.1.2-rc.1",
     "@deepseek-ai/dsh-agent-instructions": "0.1.2-rc.1",
-    "@deepseek-ai/dsh-cmdline": "0.1.2-rc.1"
+    "@deepseek-ai/dsh-cmdline": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
+    "@deepseek-ai/dsh-client-modules": "0.1.2-rc.1"
   },
   "testedPlatform": "darwin-arm64",
   "testedNode": "26.4.0",
