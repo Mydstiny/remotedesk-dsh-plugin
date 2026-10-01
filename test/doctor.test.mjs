@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { doctor } from "../src/doctor.mjs";
+import { doctor, locateRuntime } from "../src/doctor.mjs";
 
 test("checks actual resolved components and refuses version drift", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "remotedesk-dsh-test-"));
@@ -45,4 +45,20 @@ test("does not leak local paths or metadata parser errors", async () => {
   const report = await doctor({ runtimeRoot: "/nonexistent/SECRET_SENTINEL" });
   assert.equal(report.status, "blocked");
   assert.ok(!JSON.stringify(report).includes("SECRET_SENTINEL"));
+});
+
+test("honors an explicit runtime root before PATH discovery", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "remotedesk-dsh-runtime-root-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(
+    join(root, "package.json"),
+    JSON.stringify({ name: "@deepseek-ai/dsh", version: "0.1.2-rc.1" }),
+  );
+  const previous = process.env.REMOTEDESK_DSH_RUNTIME_ROOT;
+  t.after(() => {
+    if (previous === undefined) delete process.env.REMOTEDESK_DSH_RUNTIME_ROOT;
+    else process.env.REMOTEDESK_DSH_RUNTIME_ROOT = previous;
+  });
+  process.env.REMOTEDESK_DSH_RUNTIME_ROOT = root;
+  assert.equal(await locateRuntime(), await realpath(root));
 });

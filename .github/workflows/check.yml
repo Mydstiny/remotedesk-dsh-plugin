@@ -30,7 +30,14 @@ jobs:
         with:
           node-version: "22"
       - run: npm ci --ignore-scripts
-      - run: npm install --global @deepseek-ai/dsh@0.1.2-rc.1 pnpm@11.21.0
+      - name: Install pinned DSH runtime
+        env:
+          DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime
+        run: node -e "const {spawnSync}=require('node:child_process'); const fs=require('node:fs'); const path=require('node:path'); const npm=process.platform==='win32'?'npm.cmd':'npm'; const root=process.env.DSH_RUNTIME_ROOT; fs.mkdirSync(root,{recursive:true}); fs.writeFileSync(path.join(root,'package.json'),JSON.stringify({private:true,overrides:{'@deepseek-ai/cordis':'4.0.2'}})); const r=spawnSync(npm,['install','--prefix',root,'--no-audit','--no-fund','@deepseek-ai/dsh@0.1.2-rc.1','pnpm@11.21.0'],{stdio:'inherit',shell:process.platform==='win32'}); if(r.error){console.error(r.error); process.exit(1)} process.exit(r.status ?? 1)"
+      - name: Add pinned DSH runtime to PATH
+        env:
+          DSH_RUNTIME_ROOT: ${{ runner.temp }}/remotedesk-dsh-runtime
+        run: node -e "const fs=require('node:fs'); const path=require('node:path'); const os=require('node:os'); const root=process.env.DSH_RUNTIME_ROOT; const bin=path.join(root,'node_modules','.bin'); const runtime=path.join(root,'node_modules','@deepseek-ai','dsh'); fs.appendFileSync(process.env.GITHUB_PATH,bin+os.EOL); fs.appendFileSync(process.env.GITHUB_ENV,'REMOTEDESK_DSH_RUNTIME_ROOT='+runtime+os.EOL)"
       - run: node bin/remotedesk-dsh.mjs doctor --json
       - run: node test/native-flow-runtime.mjs
       - run: node test/native-shutdown-runtime.mjs
