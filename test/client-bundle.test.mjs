@@ -120,6 +120,11 @@ test("client bundle registers one settings section with balanced dictionaries", 
   assert.match(bundle, /pair\.methodLink/);
   assert.equal(bundle.includes("remotedesk://pair?data="), true);
   assert.match(bundle, /JSON\.stringify\(nextInvite\)/);
+  assert.match(bundle, /createSvgTag/);
+  assert.match(bundle, /Array\.isArray\(snapshot\.sessions\)/);
+  assert.match(bundle, /Object\.values\(snapshot\.operations\)/);
+  assert.equal(bundle.includes("String(snapshot.sessions ?? 0)"), false);
+  assert.equal(bundle.includes("String(snapshot.operations ?? 0)"), false);
 
   assert.deepEqual(effects, ["remotedesk-settings: section dictionaries"]);
 });
