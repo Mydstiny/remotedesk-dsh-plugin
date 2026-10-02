@@ -121,6 +121,11 @@ test("client bundle registers one settings section with balanced dictionaries", 
   assert.equal(bundle.includes("remotedesk://pair?data="), true);
   assert.match(bundle, /JSON\.stringify\(nextInvite\)/);
   assert.match(bundle, /createSvgTag/);
+  assert.match(bundle, /pair\.progressLabel/);
+  assert.match(bundle, /rd_progressTrack/);
+  assert.match(bundle, /aria-valuenow/);
+  assert.match(bundle, /remainingRatio/);
+  assert.match(bundle, /width: percent \+ "%"/);
   assert.match(bundle, /Array\.isArray\(snapshot\.sessions\)/);
   assert.match(bundle, /Object\.values\(snapshot\.operations\)/);
   assert.equal(bundle.includes("String(snapshot.sessions ?? 0)"), false);
