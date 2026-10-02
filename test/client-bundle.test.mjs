@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 // The bundle is authored against the browser platform module table. Node can
 // still exercise its registration path: stub the loader facade and React, then
@@ -113,6 +114,17 @@ test("client bundle registers one settings section with balanced dictionaries", 
     injected.copy("loadError", { message: "boom" }),
     "读取失败：boom",
   );
+
+  const bundle = readFileSync(new URL("../lib/client.js", import.meta.url), "utf8");
+  assert.match(bundle, /pair\.methodQr/);
+  assert.match(bundle, /pair\.methodLink/);
+  assert.equal(bundle.includes("remotedesk://pair?data="), true);
+  assert.match(bundle, /JSON\.stringify\(nextInvite\)/);
+  assert.match(bundle, /createSvgTag/);
+  assert.match(bundle, /Array\.isArray\(snapshot\.sessions\)/);
+  assert.match(bundle, /Object\.values\(snapshot\.operations\)/);
+  assert.equal(bundle.includes("String(snapshot.sessions ?? 0)"), false);
+  assert.equal(bundle.includes("String(snapshot.operations ?? 0)"), false);
 
   assert.deepEqual(effects, ["remotedesk-settings: section dictionaries"]);
 });

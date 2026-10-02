@@ -27,6 +27,12 @@ test("control panel stays loopback, authenticates API calls, and manages state",
       assert.match(html, /prefers-color-scheme:dark/);
       assert.match(html, /--panel-surface/);
       assert.match(html, /background:var\(--panel-surface\)/);
+      assert.match(html, /\[hidden\]\{display:none!important\}/);
+      assert.match(html, /二维码（默认）/);
+      assert.match(html, /链接配对/);
+      assert.match(html, /复制配对链接/);
+      assert.match(html, /qrcode/);
+      assert.match(html, /COPY_UNAVAILABLE/);
       const headers = { Authorization: "Bearer " + panel.token };
       const wrongToken = await fetch("http://127.0.0.1:" + panel.port + "/api/status", { headers: { Authorization: "Bearer wrong" } });
       assert.equal(wrongToken.status, 401);
