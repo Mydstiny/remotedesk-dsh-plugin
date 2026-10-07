@@ -5,7 +5,8 @@ import { isDeepStrictEqual } from "node:util";
 import { createRequire } from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import {
   Fault,
   requireThat,
@@ -14,7 +15,7 @@ import {
 } from "@remotedesk/bridge-core/errors";
 import { validateNativeAnswer } from "@remotedesk/bridge-core/native-answers";
 const PUBLIC_EVENT =
-  /^(user\/message|assistant\/(chunk|message)|tool\/(call|result)|turn\/(start|end)|step\/(start|end)|approval\/(asked|decided)|model\/selection|session\/title|compaction\/|context\/)/;
+  /^(user\/message|assistant\/(chunk|message)|tool\/(call|result)|turn\/(start|end)|step\/(start|end)|approval\/(asked|decided)|model\/selection|session\/title|compaction\/|context\/|request\/context$)/;
 const BLOCKED_TOOLS = new Set([
   "subagent",
   "subagent_fork",
@@ -631,7 +632,8 @@ export class DshAdapter {
         this.handles.set(s.id, handle);
         this.checkpoint(s, {
           ...current,
-          upstream: s.id,
+          // An imported session is bound to the native session it came from; a created one uses its own id.
+          upstream: s.upstream || s.id,
           permissionMode: s.permissionMode ?? "workspace-write",
           executionProfile: "native-v1",
           inputModalities:
@@ -676,6 +678,80 @@ export class DshAdapter {
   async resume(s, authorize = () => {}) {
     await this.connect(s, false, undefined, authorize);
   }
+  /**
+   * The folder's own DSH conversations (the DSH app or CLI), newest first: top-level sessions only. A cold
+   * session's title is read once from its log (the latest session/title, else the first typed prompt) and cached.
+   */
+  /** The DSH app's workspaces (its sidebar), in the app's order; the store is read, never written. */
+  async nativeProjects() {
+    const file = join(process.env.DSH_HOME || join(homedir(), ".dsh"), "storages", "workspace.json");
+    const store = JSON.parse(await readFile(file, "utf8"));
+    const tables = store?.tables?.workspaces ?? {};
+    const order = Array.isArray(store?.global?.workspaceIds) ? store.global.workspaceIds : Object.keys(tables);
+    return order
+      .map((id) => [id, tables[id]])
+      .filter(([, w]) => w && typeof w.path === "string")
+      .map(([id, w]) => ({ key: "dsh:" + id, title: w.title, roots: [w.path] }));
+  }
+  async nativeSessions(p, { limit = 100 } = {}) {
+    const records = await this.ctx.sessionQuery.listSessions(),
+      roots = p.roots ?? [p.path],
+      rows = [];
+    for (const record of records) {
+      const h = record.header;
+      if (!roots.includes(h?.cwd) || h.parentSession !== undefined) continue;
+      if (rows.length >= limit) break;
+      const seen = await this.nativeSummary(h.id);
+      rows.push({
+        id: h.id,
+        upstream: h.id,
+        title: seen.title,
+        updatedAt: Math.max(h.createdAt ?? 0, seen.updatedAt),
+        archived: false,
+      });
+    }
+    return rows;
+  }
+  async nativeSummary(id) {
+    this.nativeSummaries ??= new Map();
+    const cached = this.nativeSummaries.get(id);
+    if (cached && Date.now() - cached.at < 60000) return cached;
+    let title = "",
+      prompt = "",
+      updatedAt = 0;
+    const observed = await this.ctx.sessionQuery.observeSession(id, {
+      projectionMode: "none",
+    });
+    try {
+      for (const e of observed.events) {
+        const at = Number(e.time ?? e.ts ?? e.timestamp ?? e.at ?? 0);
+        if (Number.isFinite(at) && at > updatedAt) updatedAt = at;
+        if (e.type === "session/title" && typeof e.data?.title === "string")
+          title = e.data.title;
+        if (!prompt && e.type === "user/message") {
+          const m = e.data?.message ?? e.data ?? {};
+          if (m.source?.kind === undefined || m.source.kind === "user") {
+            const content = m.content;
+            prompt =
+              typeof content === "string"
+                ? content
+                : (Array.isArray(content)
+                    ? content.find((b) => b?.type === "text")?.text
+                    : "") ?? "";
+          }
+        }
+      }
+    } finally {
+      observed[Symbol.dispose]();
+    }
+    const summary = {
+      at: Date.now(),
+      title: (title || prompt.split("\n").find((line) => line.trim()) || "").trim().slice(0, 120),
+      updatedAt,
+    };
+    this.nativeSummaries.set(id, summary);
+    return summary;
+  }
   async read(s, { cursor, turnId } = {}) {
     requireThat(s.upstream, "NATIVE_SESSION_RECONCILIATION_REQUIRED");
     const observed = await this.ctx.sessionQuery.observeSession(s.upstream, {
@@ -714,7 +790,7 @@ export class DshAdapter {
       const rows = observed.events.filter(
           (e) => e.seq >= from && e.seq <= through && PUBLIC_EVENT.test(e.type),
         ),
-        events = rows.slice(0, 200);
+        events = rows.slice(0, 1000);
       return {
         ...this.metadata(s),
         format: "native-event-log",

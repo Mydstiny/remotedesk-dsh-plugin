@@ -18,6 +18,7 @@ import { Store } from "@remotedesk/bridge-core/store";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
+  compactInviteText,
   controlPanelState,
   deviceSummaries,
   ensureControlPanel,
@@ -213,7 +214,9 @@ export function webRoutes(state, engine) {
           return failureResponse({ code: "PROJECTS_REQUIRED" });
         const role = input.role === undefined ? "operator" : input.role;
         if (!["viewer", "operator"].includes(role)) return failureResponse({ code: "ROLE_INVALID" });
-        return jsonResponse({ invite: await invite(state, { projects: input.projects, role }) });
+        const created = await invite(state, { projects: input.projects, role });
+        // The QR carries the compact invite (CA fingerprint, ~200 bytes) so it stays scannable; the link keeps it all.
+        return jsonResponse({ invite: created, qrText: compactInviteText(created) });
       }),
     },
     {

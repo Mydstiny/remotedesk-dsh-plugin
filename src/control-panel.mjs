@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { X509Certificate, createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -7,6 +7,20 @@ import { configuration, addProject, invite, revoke, status } from "@remotedesk/b
 import { Store } from "@remotedesk/bridge-core/store";
 import { privateDirectory } from "@remotedesk/bridge-core/privacy";
 import { controlPanelPage } from "./control-panel-page.mjs";
+
+/**
+ * The QR carries the compact invite: the CA's SHA-256 instead of the CA itself (about 190 bytes instead of 1.7 KB),
+ * so the code stays scannable on small or low-resolution screens. RemoteDesk takes the CA from this server's TLS
+ * chain only when its fingerprint matches. The text box and pairing link keep the full invite.
+ */
+export function compactInviteText(created) {
+  return JSON.stringify({
+    caSha256: createHash("sha256").update(new X509Certificate(created.ca).raw).digest("base64url"),
+    code: created.code,
+    expires: created.expires,
+    serverInstance: created.serverInstance,
+  });
+}
 
 const MAX_BODY = 100 * 1024;
 const DEFAULT_PORTS = { codex: 9543, dsh: 9544 };
@@ -192,7 +206,8 @@ export async function startControlPanel(state, { engine, port } = {}) {
           throw new Error("PROJECTS_REQUIRED");
         const role = input.role === undefined ? "operator" : input.role;
         if (!["viewer", "operator"].includes(role)) throw new Error("ROLE_INVALID");
-        json(res, 200, { invite: await invite(state, { projects: input.projects, role }) });
+        const created = await invite(state, { projects: input.projects, role });
+        json(res, 200, { invite: created, qrText: compactInviteText(created) });
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/revoke") {
