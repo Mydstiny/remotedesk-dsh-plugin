@@ -20,14 +20,14 @@ import {
 } from "@remotedesk/bridge-core/admin";
 import { pairClient, loadClient } from "@remotedesk/bridge-core/client";
 import { DshAdapter } from "../src/dsh-adapter.mjs";
-import { locateRuntime } from "../src/doctor.mjs";
+import { locateRuntime, resolveDesktopRuntime, resolveRuntime, assertRuntimeContext } from "../src/doctor.mjs";
 import { boot } from "./native-host.mjs";
 const originalCwd = process.cwd();
 const root = await realpath(
   await mkdtemp(join(tmpdir(), "remotedesk-dsh-native-flow-")),
 );
-const runtime = await locateRuntime(),
-  { ctx, workspace, load, inactive } = await boot(root, runtime);
+const selectedRuntime = process.env.REMOTEDESK_DSH_TEST_DESKTOP === "1" ? await resolveDesktopRuntime() : await locateRuntime(),
+  { ctx, workspace, load, inactive, runtime } = await boot(root, selectedRuntime);
 const { LlmAdapter } = await load("@deepseek-ai/dsh-llm");
 let action, bridge, renewal, streamAbort, stream, local;
 const calls = [],
@@ -125,6 +125,14 @@ const waitFor = async (fn, ms = 30000) => {
 const state = join(root, "state");
 try {
   assert.deepEqual(inactive, []);
+  await assertRuntimeContext(ctx, runtime);
+  await assert.rejects(assertRuntimeContext({ agents: ctx.agents, sessions: ctx.sessions, tools: {},
+    approval: ctx.approval, agentPresets: ctx.agentPresets }, runtime), /DSH_RUNTIME_CONTEXT_MISMATCH/);
+  if (process.env.REMOTEDESK_DSH_TEST_FOREIGN_RUNTIME_ROOT) {
+    const foreign = await resolveRuntime({ runtimeRoot: process.env.REMOTEDESK_DSH_TEST_FOREIGN_RUNTIME_ROOT });
+    await assert.rejects(assertRuntimeContext(ctx, foreign), /DSH_RUNTIME_CONTEXT_MISMATCH/);
+    console.log("PASS a separately installed runtime cannot attest this live host");
+  }
   local = await ctx.agents.create({
     sessionId: "local-existing",
     meta: { cwd: workspace, agentPreset: "standard" },
@@ -144,7 +152,7 @@ try {
   config.port = 0;
   config.coordinationDirectory = join(root, "locks");
   await writeFile(join(state, "config.json"), JSON.stringify(config));
-  bridge = new Bridge(state, new DshAdapter(ctx, { runtimeRoot: runtime }));
+  bridge = new Bridge(state, new DshAdapter(ctx, { runtime }));
   const { address } = await bridge.start();
   const directory = join(root, "client");
   await pairClient(directory, {
@@ -174,7 +182,7 @@ try {
       onEvent: (event) => events.push(event),
     })
     .catch(() => {});
-  const turn = async (next, answer = { decision: "accept" }) => {
+  const turn = async (next, answer = { decision: "accept" }, lapse = false) => {
     action = next;
     const op = randomUUID(),
       params = {
@@ -191,6 +199,17 @@ try {
             (await client.read("approval.list", { sessionId: id }))[0],
         )
       : undefined;
+    if (pending && lapse) {
+      const old = bridge.store.get("lease", id);
+      bridge.store.put("lease", id, { ...old, expires: Date.now() - 1 });
+      const denied = await call("approval.answer", { sessionId: id, lease, approvalId: pending.id, answer });
+      assert.equal(denied.status, "rejected");
+      assert.equal(denied.error, "LEASE_REQUIRED");
+      await assert.rejects(access(join(workspace, next.args.file_path)));
+      const reacquired = await call("lease.acquire", { sessionId: id });
+      assert.equal(reacquired.status, "succeeded");
+      assert.equal(reacquired.result.lease, lease, "same-device reacquisition preserves an open approval's token");
+    }
     if (pending)
       assert.equal(
         (
@@ -221,6 +240,9 @@ try {
     { decision: "decline" },
   );
   await assert.rejects(access(join(workspace, "denied.txt")));
+  await turn({ name: "write", args: { file_path: "lapsed-approval.txt", content: "once" } }, { decision: "accept" }, true);
+  assert.equal(await readFile(join(workspace, "lapsed-approval.txt"), "utf8"), "once");
+  console.log("PASS native approval refuses an expired lease and survives same-device reacquisition");
   await turn({
     name: "write",
     args: { file_path: "native.txt", content: "before\n" },
@@ -242,6 +264,21 @@ try {
     "after\n",
   );
   await turn({ name: "read", args: { file_path: "native.txt" } }, null);
+  const remoteAgent = ctx.agents.get(id);
+  const nativeRead = ctx.tools.get("read", remoteAgent);
+  let globalExecutions = 0, scopedExecutions = 0;
+  const removeGlobal = ctx.tools.register({ ...nativeRead, execute: async () => { globalExecutions++; } });
+  try {
+    await turn({ name: "read", args: { file_path: "native.txt" } }, null);
+    assert.equal(globalExecutions, 0, "global same-name tools cannot replace the remote preset");
+  } finally { removeGlobal(); }
+  const removeShadow = remoteAgent.ctx.tools.register({ ...nativeRead, execute: async () => { scopedExecutions++; } });
+  try {
+    await turn({ name: "read", args: { file_path: "native.txt" } }, null);
+    assert.equal(scopedExecutions, 0, "a changed definition cannot inherit an existing approval or allowlist");
+    await waitFor(() => events.some((e) => JSON.stringify(e).includes("REMOTEDESK_TOOL_SCOPE_DENIED")));
+  } finally { removeShadow(); }
+  console.log("PASS native global/scoped same-name tool replacements cannot bypass remote ownership guards");
   const shell = process.platform === "win32" ? "pwsh" : "bash";
   await turn({
     name: shell,
@@ -276,6 +313,35 @@ try {
   console.log(
     "PASS DSH native file/shell tools, once approvals, questions, mTLS stream and operation dedup",
   );
+  const detachUnowned = ctx.jobs.attachController?.("RemoteDesk unowned fixture");
+  const cancellations = { remote: 0, foreign: 0, unowned: 0 };
+  const makeJob = (name, owner) => ctx.jobs.start({ owner, kind: "scope-fixture", label: name,
+    run() { let finish; const done = new Promise((resolve) => { finish = resolve; });
+      return { done, cancel() { cancellations[name]++; finish({ status: "killed" }); } }; } });
+  const ownJob = makeJob("remote", bridge.adapter.jobCaller(remoteAgent));
+  const foreignJob = makeJob("foreign", bridge.adapter.jobCaller(local.agent));
+  const unownedJob = makeJob("unowned", undefined);
+  try {
+    const listed = await client.read("terminal.list", { sessionId: id });
+    assert.deepEqual(listed.data.map((row) => row.processId), ["job:" + ownJob]);
+    const denied = await call("terminal.stop", { sessionId: id, lease, processId: "job:" + foreignJob });
+    assert.equal(denied.status, "rejected", JSON.stringify(denied));
+    assert.equal(denied.error, "TERMINAL_NOT_FOUND");
+    assert.equal(cancellations.foreign, 0);
+    assert.equal(cancellations.unowned, 0);
+    const stopped = await call("terminal.stop", { sessionId: id, lease, processId: "job:" + ownJob });
+    assert.equal(stopped.status, "succeeded", JSON.stringify(stopped));
+    assert.equal(cancellations.remote, 1);
+    assert.equal(cancellations.foreign, 0);
+    assert.equal(cancellations.unowned, 0);
+  } finally {
+    ctx.jobs.kill(foreignJob, bridge.adapter.jobCaller(local.agent), "fixture cleanup");
+    ctx.jobs.kill(unownedJob, undefined, "fixture cleanup");
+    await ctx.jobs.wait(foreignJob, 10000, bridge.adapter.jobCaller(local.agent));
+    await ctx.jobs.wait(unownedJob, 10000, undefined);
+    detachUnowned?.();
+  }
+  console.log("PASS native owned jobs list/stop without exposing or cancelling foreign and unowned jobs");
   const models = await client.read("model.list", { projectId: "p" });
   assert.equal(models.data.length, 2);
   const update = await call("session.update", {

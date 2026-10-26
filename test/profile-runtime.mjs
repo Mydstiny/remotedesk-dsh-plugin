@@ -10,7 +10,6 @@ import {
   copyFile,
   rm,
   access,
-  chmod,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -27,11 +26,13 @@ import {
 } from "@remotedesk/bridge-core/admin";
 import { pairClient, loadClient } from "@remotedesk/bridge-core/client";
 import { requestStop } from "@remotedesk/bridge-core/service";
-import { locateRuntime } from "../src/doctor.mjs";
+import { locateRuntime, resolveRuntime } from "../src/doctor.mjs";
+import { npmEntry } from "../bin/provision-dsh-runtime.mjs";
 const exec = promisify(execFile),
   source = dirname(dirname(fileURLToPath(import.meta.url)));
 const cli = join(source, "bin/remotedesk-dsh.mjs"),
-  native = join(await locateRuntime(), "lib/bin.js");
+  runtime = await resolveRuntime(),
+  native = fileURLToPath(new URL("../bin/native-cli-entry.mjs", import.meta.url));
 const scratch = await realpath(
   await mkdtemp(join(tmpdir(), "remotedesk-profile-test-")),
 );
@@ -45,15 +46,16 @@ const port = async () => {
 };
 async function command(bin, args, options = {}) {
   try {
+    if (bin === "npm") { args = [await npmEntry(), ...args]; bin = process.execPath; }
     return await exec(bin, args, { maxBuffer: 4e6, ...options });
-  } catch {
+  } catch (error) {
     throw new Error(
       "PROFILE_FIXTURE_COMMAND_FAILED_" +
         (args.includes("plugin-install")
           ? "plugin-install"
           : args.includes("pack")
             ? "pack"
-            : "native-install"),
+            : "native-install") + ": " + String(error.stderr ?? error.message).replaceAll(scratch, "<fixture>").slice(-2500),
     );
   }
 }
@@ -94,7 +96,7 @@ try {
         type: "module",
         exports: { ".": "./index.mjs", "./local": "./local.mjs" },
         dsh: { bundle: { patch: "./cordis.patch.yml" } },
-        dependencies: { "@deepseek-ai/dsh-llm": "0.1.2-rc.1" },
+        dependencies: { "@deepseek-ai/dsh-llm": runtime.version },
       }),
     );
     await copyFile(
@@ -125,27 +127,17 @@ try {
     config.coordinationDirectory = join(root, "coordination");
     await writeFile(join(state, "config.json"), JSON.stringify(config));
     if (profile === "remotedesk-test") {
-      const fakeBin = join(root, "failing-pnpm");
-      await mkdir(fakeBin);
-      await writeFile(join(fakeBin, "pnpm"), "#!/bin/sh\nexit 7\n");
-      await chmod(join(fakeBin, "pnpm"), 0o700);
-      await assert.rejects(
-        command(
-          process.execPath,
-          [
-            cli,
-            "plugin-install",
-            "--state",
-            state,
-            "--profile",
-            profile,
-            "--package",
-            join(scratch, packed.filename),
-          ],
-          { env: { ...env, PATH: fakeBin + ":" + env.PATH } },
-        ),
-      );
-      await access(join(env.DSH_HOME, "profiles", profile, "package.json"));
+      const brokenArchive = join(root, "broken-fixture.tgz");
+      await writeFile(brokenArchive, "REMOTEDESK_INTENTIONAL_INVALID_TARBALL");
+      await assert.rejects(command(process.execPath, [cli, "plugin-install", "--state", state,
+        "--profile", profile, "--package", brokenArchive], { env }), /plugin-install/);
+      // Upstream may reject package metadata before it creates package.json.
+      // Our durable ownership intent must survive either partial-install stage.
+      const intent = JSON.parse(await readFile(join(state, "profile-install.json"), "utf8"));
+      assert.equal(intent.ownedProfile, true);
+      assert.equal(intent.profile, profile);
+      assert.equal(intent.profilePath, join(env.DSH_HOME, "profiles", profile));
+      await assert.rejects(access(join(state, "launch.json")), { code: "ENOENT" });
     }
     await command(
       process.execPath,
@@ -176,7 +168,7 @@ try {
     )[0];
     await command(
       process.execPath,
-      [native, "plugin", "--profile", profile, "add", join(root, fp.filename)],
+      [native, runtime.root, "plugin", "--profile", profile, "add", join(root, fp.filename)],
       { env },
     );
     let output = "",
@@ -184,8 +176,10 @@ try {
       exited;
     const start = () => {
       output = "";
+      const serveEnv = { ...env };
+      delete serveEnv.REMOTEDESK_DSH_RUNTIME_ROOT;
       child = spawn(process.execPath, [cli, "serve", "--state", state], {
-        env,
+        env: serveEnv,
         stdio: ["ignore", "pipe", "pipe"],
       });
       child.stdout.on("data", (d) => {
@@ -204,7 +198,7 @@ try {
         child.exitCode === null
       )
         await delay(100);
-      assert.ok(output.includes('"ready":true'), "native profile must start");
+      assert.ok(output.includes('"ready":true'), "native profile must start: " + output.replaceAll(scratch, "<fixture>").slice(0, 2000));
     };
     const stop = async () => {
       await requestStop(state);

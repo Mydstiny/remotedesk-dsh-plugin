@@ -1,11 +1,12 @@
 import { assertProfile } from "./profile-policy.mjs";
-import { locateRuntime } from "./doctor.mjs";
+import { resolveHostRuntime, assertRuntimeContext } from "./doctor.mjs";
+import { mountModernPreset } from "./native-preset.mjs";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { createRequire } from "node:module";
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { realpath } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
+import { homedir } from "node:os";
 import {
   Fault,
   requireThat,
@@ -14,7 +15,7 @@ import {
 } from "@remotedesk/bridge-core/errors";
 import { validateNativeAnswer } from "@remotedesk/bridge-core/native-answers";
 const PUBLIC_EVENT =
-  /^(user\/message|assistant\/(chunk|message)|tool\/(call|result)|turn\/(start|end)|step\/(start|end)|approval\/(asked|decided)|model\/selection|session\/title|compaction\/|context\/)/;
+  /^(user\/message|assistant\/(chunk|message)|tool\/(call|result)|turn\/(start|end)|step\/(start|end)|approval\/(asked|decided)|model\/selection|session\/title|compaction\/|context\/|request\/context$)/;
 const BLOCKED_TOOLS = new Set([
   "subagent",
   "subagent_fork",
@@ -89,9 +90,10 @@ export class DshAdapter {
     network: "host-native",
     processScope: "native-managed-jobs-and-terminals",
   };
-  constructor(ctx, { runtimeRoot, preset = "remotedesk-native" } = {}) {
+  constructor(ctx, { runtimeRoot, runtime, preset = "remotedesk-native" } = {}) {
     this.ctx = ctx;
     this.runtimeRoot = runtimeRoot;
+    this.runtime = runtime;
     this.preset = preset;
     this.handles = new Map();
     this.loading = new Map();
@@ -138,22 +140,18 @@ export class DshAdapter {
         this.ctx.sessionTitle,
       "DSH_NATIVE_SERVICES_REQUIRED",
     );
-    const require = createRequire(
-      join(this.runtimeRoot ?? (await locateRuntime()), "package.json"),
-    );
-    const load = (name) =>
-      import(pathToFileURL(require.resolve("@deepseek-ai/" + name)).href);
-    const [agent, sandbox, approval, presets] = await Promise.all([
-      load("dsh-agent"),
-      load("dsh-sandbox-policy"),
-      load("dsh-user-approval"),
-      load("dsh-agent-presets"),
+    const runtime = this.runtime ??= await resolveHostRuntime(this.ctx, { runtimeRoot: this.runtimeRoot });
+    await assertRuntimeContext(this.ctx, runtime);
+    const load = (name) => runtime.load("@deepseek-ai/" + name);
+    const [agent, sandbox, approval] = await Promise.all([
+      load("dsh-agent"), load("dsh-sandbox-policy"), load("dsh-user-approval"),
     ]);
     this.native = {
       installModelSelection: agent.installModelSelection,
       setSandboxMode: sandbox.setSandboxMode,
       setApprovalPolicy: approval.setApprovalPolicy,
-      standingMountFor: presets.standingMountFor,
+      standingMountFor: runtime.profile.id === "legacy-012" ?
+        (await load("dsh-agent-presets")).standingMountFor : undefined,
     };
   }
   project(s) {
@@ -271,45 +269,42 @@ export class DshAdapter {
     return h && h.agent === agent && this.ctx.agents.get(s.id) === agent;
   }
   setup(s, p, selection, lifecycle) {
-    return async (agentCtx) => {
-      const owner = agentCtx.agent,
+    return async (agentCtx, createdAgent) => {
+      const owner = this.runtime.profile.id === "modern-021" ? createdAgent : agentCtx.agent,
         jobs = this.ctx.jobs;
+      requireThat(owner && owner.ctx === agentCtx, "NATIVE_AGENT_SCOPE_REQUIRED");
       // Scope teardown captures native job outcomes before registry cleanup;
       // normal running jobs retain their native reporting behavior.
       agentCtx.effect(
         () => () => {
           lifecycle.jobs = Promise.allSettled(
             jobs
-              .list(owner)
-              .filter((job) => job.ownerSession === owner.id)
-              .map((job) => jobs.wait(job.id, 10000, owner)),
+              .list(this.jobCaller(owner))
+              .filter((job) => this.jobOwnedBy(job, owner))
+              .map((job) => jobs.wait(job.id, 10000, this.jobCaller(owner))),
           );
           return lifecycle.jobs;
         },
         "RemoteDesk native teardown audit",
       );
-      const preset = await this.ctx.agentPresets.resolve(this.preset);
-      requireThat(
-        (await realpath(preset.path)) ===
-          (await realpath(
-            fileURLToPath(
-              new URL(
-                "../presets/remotedesk-native/agent.cordis.yml",
-                import.meta.url,
-              ),
-            ),
-          )) && preset.trust === "system",
-        "NATIVE_PRESET_SOURCE_MISMATCH",
-      );
-      await this.ctx.agentPresets.mount(agentCtx, this.preset);
+      let mount;
+      if (this.runtime.profile.id === "modern-021") {
+        mount = await mountModernPreset(agentCtx, this.ctx.agentPresets, this.runtime, this.preset);
+      } else {
+        const preset = await this.ctx.agentPresets.resolve(this.preset);
+        requireThat((await realpath(preset.path)) === (await realpath(fileURLToPath(
+          new URL("../presets/remotedesk-native/agent.cordis.yml", import.meta.url)))) &&
+          preset.trust === "system", "NATIVE_PRESET_SOURCE_MISMATCH");
+        await this.ctx.agentPresets.mount(agentCtx, this.preset);
+        mount = this.native.standingMountFor(agentCtx);
+      }
       this.native.setSandboxMode(
-        agentCtx.agent.session,
+        owner.session,
         s.permissionMode ?? "workspace-write",
       );
-      this.native.setApprovalPolicy(agentCtx.agent.session, "ask");
+      this.native.setApprovalPolicy(owner.session, "ask");
       this.native.installModelSelection(agentCtx, selection);
       agentCtx.tools.presentAs("native");
-      const mount = this.native.standingMountFor(agentCtx);
       requireThat(mount, "NATIVE_PRESET_MOUNT_REQUIRED");
       const expected = new Map(
         [...NATIVE_TOOLS].flatMap((name) => {
@@ -321,6 +316,8 @@ export class DshAdapter {
             : [];
         }),
       );
+      // Modern restrictions name inherited capabilities, before owned wrappers.
+      agentCtx.tools.restrict({ allow: [...expected.keys()] });
       const nativeJobList = expected.get("job_list");
       if (nativeJobList) {
         const execute = nativeJobList.execute;
@@ -329,8 +326,8 @@ export class DshAdapter {
           execute: async (args, exec) => {
             const owned = new Set(
               this.ctx.jobs
-                .list(exec.agent)
-                .filter((job) => job.ownerSession === s.id)
+                .list(this.jobCaller(exec.agent))
+                .filter((job) => this.jobOwnedBy(job, exec.agent))
                 .map((job) => job.id),
             );
             return (await execute(args, exec)).filter((job) =>
@@ -340,7 +337,7 @@ export class DshAdapter {
         });
         expected.set(
           "job_list",
-          agentCtx.tools.get("job_list", agentCtx.agent),
+          agentCtx.tools.get("job_list", owner),
         );
       }
       requireThat(
@@ -351,7 +348,6 @@ export class DshAdapter {
       const executors = new Map(
         [...expected].map(([name, definition]) => [name, definition.execute]),
       );
-      agentCtx.tools.restrict({ allow: [...expected.keys()] });
       const accepted = new Set(),
         calls = new Map();
       agentCtx.tools.guard((exec) => {
@@ -364,8 +360,7 @@ export class DshAdapter {
         if (["job_output", "job_kill"].includes(exec.name)) {
           try {
             if (
-              this.ctx.jobs.get(exec.arguments?.job_id, exec.agent)
-                ?.ownerSession !== s.id
+              !this.jobOwnedBy(this.ctx.jobs.get(exec.arguments?.job_id, this.jobCaller(exec.agent)), exec.agent)
             )
               return "REMOTEDESK_JOB_SCOPE_DENIED";
           } catch {
@@ -631,7 +626,8 @@ export class DshAdapter {
         this.handles.set(s.id, handle);
         this.checkpoint(s, {
           ...current,
-          upstream: s.id,
+          // An imported session is bound to the native session it came from; a created one uses its own id.
+          upstream: s.upstream || s.id,
           permissionMode: s.permissionMode ?? "workspace-write",
           executionProfile: "native-v1",
           inputModalities:
@@ -676,6 +672,80 @@ export class DshAdapter {
   async resume(s, authorize = () => {}) {
     await this.connect(s, false, undefined, authorize);
   }
+  /**
+   * The folder's own DSH conversations (the DSH app or CLI), newest first: top-level sessions only. A cold
+   * session's title is read once from its log (the latest session/title, else the first typed prompt) and cached.
+   */
+  /** The DSH app's workspaces (its sidebar), in the app's order; the store is read, never written. */
+  async nativeProjects() {
+    const file = join(process.env.DSH_HOME || join(homedir(), ".dsh"), "storages", "workspace.json");
+    const store = JSON.parse(await readFile(file, "utf8"));
+    const tables = store?.tables?.workspaces ?? {};
+    const order = Array.isArray(store?.global?.workspaceIds) ? store.global.workspaceIds : Object.keys(tables);
+    return order
+      .map((id) => [id, tables[id]])
+      .filter(([, w]) => w && typeof w.path === "string")
+      .map(([id, w]) => ({ key: "dsh:" + id, title: w.title, roots: [w.path] }));
+  }
+  async nativeSessions(p, { limit = 100 } = {}) {
+    const records = await this.ctx.sessionQuery.listSessions(),
+      roots = p.roots ?? [p.path],
+      rows = [];
+    for (const record of records) {
+      const h = record.header;
+      if (!roots.includes(h?.cwd) || h.parentSession !== undefined) continue;
+      if (rows.length >= limit) break;
+      const seen = await this.nativeSummary(h.id);
+      rows.push({
+        id: h.id,
+        upstream: h.id,
+        title: seen.title,
+        updatedAt: Math.max(h.createdAt ?? 0, seen.updatedAt),
+        archived: false,
+      });
+    }
+    return rows;
+  }
+  async nativeSummary(id) {
+    this.nativeSummaries ??= new Map();
+    const cached = this.nativeSummaries.get(id);
+    if (cached && Date.now() - cached.at < 60000) return cached;
+    let title = "",
+      prompt = "",
+      updatedAt = 0;
+    const observed = await this.ctx.sessionQuery.observeSession(id, {
+      projectionMode: "none",
+    });
+    try {
+      for (const e of observed.events) {
+        const at = Number(e.time ?? e.ts ?? e.timestamp ?? e.at ?? 0);
+        if (Number.isFinite(at) && at > updatedAt) updatedAt = at;
+        if (e.type === "session/title" && typeof e.data?.title === "string")
+          title = e.data.title;
+        if (!prompt && e.type === "user/message") {
+          const m = e.data?.message ?? e.data ?? {};
+          if (m.source?.kind === undefined || m.source.kind === "user") {
+            const content = m.content;
+            prompt =
+              typeof content === "string"
+                ? content
+                : (Array.isArray(content)
+                    ? content.find((b) => b?.type === "text")?.text
+                    : "") ?? "";
+          }
+        }
+      }
+    } finally {
+      observed[Symbol.dispose]();
+    }
+    const summary = {
+      at: Date.now(),
+      title: (title || prompt.split("\n").find((line) => line.trim()) || "").trim().slice(0, 120),
+      updatedAt,
+    };
+    this.nativeSummaries.set(id, summary);
+    return summary;
+  }
   async read(s, { cursor, turnId } = {}) {
     requireThat(s.upstream, "NATIVE_SESSION_RECONCILIATION_REQUIRED");
     const observed = await this.ctx.sessionQuery.observeSession(s.upstream, {
@@ -714,7 +784,7 @@ export class DshAdapter {
       const rows = observed.events.filter(
           (e) => e.seq >= from && e.seq <= through && PUBLIC_EVENT.test(e.type),
         ),
-        events = rows.slice(0, 200);
+        events = rows.slice(0, 1000);
       return {
         ...this.metadata(s),
         format: "native-event-log",
@@ -951,11 +1021,17 @@ export class DshAdapter {
     await this.ctx.sessions.flush(run.agent.session);
     return { messageId: id };
   }
+  jobCaller(agent) {
+    return this.runtime.profile.id === "modern-021" ? agent.id : agent;
+  }
+  jobOwnedBy(job, agent) {
+    return (this.runtime.profile.id === "modern-021" ? job?.owner : job?.ownerSession) === agent.id;
+  }
   activity(agent) {
     return [
-      ...(this.ctx.jobs?.list(agent) ?? [])
+      ...(this.ctx.jobs?.list(this.jobCaller(agent)) ?? [])
         .filter(
-          (job) => job.ownerSession === agent.id && ACTIVE.has(job.status),
+          (job) => this.jobOwnedBy(job, agent) && ACTIVE.has(job.status),
         )
         .map((job) => ({
           processId: "job:" + job.id,
@@ -983,8 +1059,8 @@ export class DshAdapter {
     );
     if (processId.startsWith("job:")) {
       const id = processId.slice(4);
-      this.ctx.jobs.kill(id, h.agent, "RemoteDesk stop");
-      const result = await this.ctx.jobs.wait(id, 10000, h.agent);
+      this.ctx.jobs.kill(id, this.jobCaller(h.agent), "RemoteDesk stop");
+      const result = await this.ctx.jobs.wait(id, 10000, this.jobCaller(h.agent));
       requireThat(
         result && !ACTIVE.has(result.status) && result.status !== "failed",
         "TERMINAL_STOP_UNCONFIRMED",
@@ -1097,8 +1173,14 @@ export class DshAdapter {
         if (run?.maintenance) await run.maintenance.catch(() => {});
         if (run?.done) await run.done;
         const expected = h.agent.session.snapshotEvents();
-        // readFrom joins native retirement persistence before reading disk.
-        const stored = await persistence.readFrom(h.agent.id, 0);
+        // Native handle disposal joins the writer's durability barrier. Modern
+        // persistence uses an explicit read-only handle; it never claims write.
+        let stored;
+        if (this.runtime.profile.id === "modern-021") {
+          const reader = await persistence.open(h.agent.session.id, "read");
+          try { stored = await reader.read(); }
+          finally { await reader.close(); }
+        } else stored = await persistence.readFrom(h.agent.id, 0);
         requireThat(
           isDeepStrictEqual(stored.events, expected),
           "NATIVE_SESSION_PERSISTENCE_UNCONFIRMED",
@@ -1116,10 +1198,10 @@ export class DshAdapter {
         );
         requireThat(
           !jobs
-            .list(h.agent)
+            .list(this.jobCaller(h.agent))
             .some(
               (job) =>
-                job.ownerSession === h.agent.id && ACTIVE.has(job.status),
+                this.jobOwnedBy(job, h.agent) && ACTIVE.has(job.status),
             ) && !terminals?.hasOwnerActivity(h.agent),
           "TERMINAL_STOP_UNCONFIRMED",
         );
