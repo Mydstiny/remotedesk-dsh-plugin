@@ -18,3 +18,7 @@ Web 设置页额外消费两个上游契约，并按精确版本一并锁定：�
 原生读取/网络/后台进程限制见 SECURITY。Windows DSH 上游写隔离是 partial；Codex 固定使用原生 unelevated Windows sandbox，不自动配置管理员 sandbox。macOS x64、Windows arm64、无人登录启动、任意用户扩展/工具链不属于默认已验矩阵。
 
 HarmonyOS UI、设备证书存储、真实双机 LAN、设备断线重连、Pro 权益和 RustDesk 传输仍需独立端侧验收。服务 ready、CI 通过、真实宿主模型可用是不同证据；发布说明记录实际完成范围。
+
+## 0.2.1-rc.3 compatibility work
+
+The diagnostic contract now distinguishes the 0.1.2 and 0.2.1 component sets and reports missing components individually. The modern adapter remains disabled until native compatibility tests pass; changing version strings does not enable it. Desktop-only installation is not a standalone CLI root. Keep Desktop installed and provision an exact supported CLI in a separate directory, then set `REMOTEDESK_DSH_RUNTIME_ROOT` to `<installation>/node_modules/@deepseek-ai/dsh` (the directory containing its package.json), not app.asar or the parent node_modules directory. No global downgrade is required.

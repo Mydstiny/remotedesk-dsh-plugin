@@ -11,9 +11,13 @@ import { readFile, writeFile, stat, lstat, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { main } from "@remotedesk/bridge-core/cli";
 import { requireThat } from "@remotedesk/bridge-core/errors";
-import { doctor, locateRuntime } from "../src/doctor.mjs";
+import { doctor, resolveRuntime } from "../src/doctor.mjs";
 import { runControlPanel } from "../src/control-panel.mjs";
-const executable = async () => join(await locateRuntime(), "lib", "bin.js");
+async function verifiedRuntime() {
+  const runtime = await resolveRuntime();
+  requireThat((await doctor({ runtime })).status === "ok", "DSH_RUNTIME_UNVERIFIED");
+  return runtime;
+}
 let shutdown;
 const showHelp = !process.argv[2] || process.argv[2] === "help";
 await main({
@@ -25,7 +29,7 @@ await main({
   entry: fileURLToPath(import.meta.url),
   doctor,
   serve: async (state) => {
-    requireThat((await doctor()).status === "ok", "DSH_RUNTIME_UNVERIFIED");
+    const runtime = await verifiedRuntime();
     const launch = JSON.parse(
       await readFile(join(state, "launch.json"), "utf8"),
     );
@@ -33,7 +37,8 @@ await main({
       /^[a-zA-Z0-9_-]{1,40}$/.test(launch.profile),
       "PROFILE_INVALID",
     );
-    const bin = await executable();
+    const bin = runtime.entry;
+    process.env.REMOTEDESK_DSH_RUNTIME_ROOT = runtime.root;
     process.env.REMOTEDESK_DSH_STATE = state;
     requireThat(
       launch.ownedProfile === true || launch.profile === "web",
@@ -94,7 +99,7 @@ await main({
     ));
     const patch = await readNativeProfileOverlay(
       {
-        runtime: await locateRuntime(),
+        runtime: runtime.root,
         profilePath: launch.profilePath,
         dshHome: resolve(process.env.DSH_HOME || join(homedir(), ".dsh")),
       },
@@ -138,9 +143,10 @@ await main({
       archive.endsWith(".tgz") && (await stat(archive)).isFile(),
       "LOCAL_PACKAGE_REQUIRED",
     );
-    requireThat((await doctor()).status === "ok", "DSH_RUNTIME_UNVERIFIED");
+    const runtime = await verifiedRuntime();
     await requirePnpm();
-    const bin = await executable();
+    const bin = runtime.entry;
+    process.env.REMOTEDESK_DSH_RUNTIME_ROOT = runtime.root;
     const bytes = await readFile(archive);
     requireThat(bytes.length <= 16000000, "PACKAGE_TOO_LARGE");
     const packageSha256 = createHash("sha256").update(bytes).digest("hex"),

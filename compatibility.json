@@ -2,7 +2,9 @@
   "schemaVersion": 1,
   "adapterVersion": "0.3.0",
   "stage": "native-host-v1",
-  "cliVersions": ["0.1.2-rc.1"],
+  "cliVersions": [
+    "0.1.2-rc.1"
+  ],
   "components": {
     "@deepseek-ai/cordis": "4.0.2",
     "@deepseek-ai/dsh-base": "0.1.2-rc.1",
@@ -46,7 +48,105 @@
   "userQuestionMode": "scoped-native-waterfall",
   "remoteAccess": true,
   "entitlement": "pro.lifetime",
-  "platforms": ["darwin", "linux", "win32"],
+  "platforms": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
   "protocolMajor": 1,
-  "wireProtocolFrozen": false
+  "wireProtocolFrozen": false,
+  "runtimeProfiles": [
+    {
+      "id": "legacy-012",
+      "enabled": true,
+      "cliVersions": [
+        "0.1.2-rc.1"
+      ],
+      "components": {
+        "@deepseek-ai/cordis": "4.0.2",
+        "@deepseek-ai/dsh-base": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-user-approval": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-user-questions": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-loop": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-system-prompt": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-projection": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-persistence-jsonl": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-attachment-local": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-default-model": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-presets": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-sandbox-local": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-sandbox-policy": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-subprocess-local": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-jobs": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-query": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-title": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-app-boot": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-fs": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-jobs": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-terminal": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-bash-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-pwsh-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-fs-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-compaction-basic": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-bash": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-pwsh": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-instructions": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-cmdline": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-client-modules": "0.1.2-rc.1"
+      }
+    },
+    {
+      "id": "modern-021",
+      "enabled": false,
+      "cliVersions": [
+        "0.2.1-rc.3"
+      ],
+      "components": {
+        "@deepseek-ai/cordis": "4.0.5",
+        "@deepseek-ai/dsh-base": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-user-approval": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-user-questions": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-projection": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-attachment-local": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-sandbox-local": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-jobs": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-query": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-title": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-app-boot": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-fs": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-jobs": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-terminal": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-bash-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-pwsh-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-fs-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-bash": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-pwsh": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-instructions": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-cmdline": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-client-modules": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-preset": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.3"
+      }
+    }
+  ]
 }

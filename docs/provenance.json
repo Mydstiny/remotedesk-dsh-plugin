@@ -32,11 +32,17 @@
       "version": "0.3.0",
       "license": "MIT",
       "archive": "vendor/remotedesk-bridge-core-0.3.0.tgz",
-      "sha256": "a0c5078f13eee9a2230b7f57ad8d9a85cb8808f35ea13aecbf33b3aa75cbfaeb",
+      "sha256": "f6651afc9df42f701d6d3c5552237573921f504aae679edd6cb0fc5a11691eae",
       "source": "https://github.com/Mydstiny/remotedesk-codex-plugin",
       "sourceCommit": "061ec9e426e896611a45fe306a1a79a6b8511139",
       "sourceDirectory": "packages/bridge-core",
-      "bundled": true
+      "bundled": true,
+      "sourceSnapshot": {
+        "repository": "Mydstiny/remotedesk-dsh-plugin",
+        "commit": "bbf715fb054f52f1aacd7ccbe5c5b029526de547",
+        "path": "vendor/remotedesk-bridge-core-0.3.0.tgz"
+      },
+      "modifications": "Includes the previously deployed same-device approval after lease reacquisition correction; exact vendored snapshot is retained."
     }
   ],
   "derivedSource": [
@@ -389,5 +395,27 @@
   ],
   "cliVersion": "0.1.2-rc.1",
   "source": "https://github.com/deepseek-ai/deepseek-harness",
-  "documentation": "https://deepseek-harness.github.io/deepseek-harness/en/reference/"
+  "documentation": "https://deepseek-harness.github.io/deepseek-harness/en/reference/",
+  "runtimeCompatibilityWork": {
+    "issue": "https://github.com/Mydstiny/remotedesk-dsh-plugin/issues/13",
+    "date": "2026-10-26",
+    "modernAdapterEnabled": false,
+    "modernCli": "0.2.1-rc.3",
+    "cordis": "4.0.5",
+    "evidence": "Exact npm package integrity checked by isolated install; component metadata only at diagnostic milestone",
+    "externalArtifacts": [
+      {
+        "version": "0.2.1-rc.3",
+        "resolved": "https://registry.npmjs.org/@deepseek-ai/dsh/-/dsh-0.2.1-rc.3.tgz",
+        "integrity": "sha512-H+E9HLnHf7fJqzen84Z9Bq8ggb5xbrcbyhZjXTJLE9NabHr3zteGvTRvdvGkxPl4ov80is4WLglFmSo+/olJjg==",
+        "name": "@deepseek-ai/dsh"
+      },
+      {
+        "version": "4.0.5",
+        "resolved": "https://registry.npmjs.org/@deepseek-ai/cordis/-/cordis-4.0.5.tgz",
+        "integrity": "sha512-Sktq5axy0owk9PdnivBRNOJjHEVEibCt0+TDDZcv0+UH2KS1M910fX4kn5y45YFsrpZIi1mJf/1s5VzywMUnyg==",
+        "name": "@deepseek-ai/cordis"
+      }
+    ]
+  }
 }
