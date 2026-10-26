@@ -9,7 +9,7 @@
   },
   "execution": "Native installed engine tools and sandbox; no container runtime.",
   "externalPrerequisites": [
-    "Node.js >=22.16",
+    "Node.js >=22.16 for legacy; ^22.18.0 || >=24.2.0 and import.meta.main for modern",
     "OpenSSL 3",
     "pnpm 11.21.0 (legacy-012) or 12.6.0 (modern-021); provisioned with the exact runtime"
   ],

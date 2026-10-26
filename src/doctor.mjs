@@ -1,1 +1,1 @@
-export { doctor, locateRuntime, inspectRuntime, resolveRuntime, supportedNodeVersion, resolveHostRuntime, assertRuntimeContext, resolveDesktopRuntime } from "./runtime-contract.mjs";
+export { doctor, locateRuntime, inspectRuntime, resolveRuntime, supportedNodeVersion, supportedRuntimeNode, resolveHostRuntime, assertRuntimeContext, resolveDesktopRuntime } from "./runtime-contract.mjs";

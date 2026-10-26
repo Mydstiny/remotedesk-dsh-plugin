@@ -100,7 +100,9 @@
         "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
         "@deepseek-ai/dsh-client-modules": "0.1.2-rc.1"
       },
-      "pnpmVersion": "11.21.0"
+      "pnpmVersion": "11.21.0",
+      "nodeRange": ">=22.16.0",
+      "requiresImportMetaMain": false
     },
     {
       "id": "modern-021",
@@ -169,7 +171,9 @@
         "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.3",
         "@deepseek-ai/dsh-jobs-local": "0.2.1-rc.3"
       },
-      "pnpmVersion": "12.6.0"
+      "pnpmVersion": "12.6.0",
+      "nodeRange": "^22.18.0 || >=24.2.0",
+      "requiresImportMetaMain": true
     }
   ]
 }

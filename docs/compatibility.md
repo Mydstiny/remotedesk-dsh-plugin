@@ -7,7 +7,7 @@
 | legacy-012 | 0.1.2-rc.1 | 4.0.2 | 11.21.0 | 独立 CLI |
 | modern-021 | 0.2.1-rc.3 | 4.0.5 | 12.6.0 | 独立 CLI；Desktop 进程内实际加载的模块 |
 
-Node 最低 22.16，OpenSSL 3。`compatibility.json` 的 runtimeProfiles 是逐组件清单；未知 patch、缺包、混装和身份不符均拒绝启动。旧版组件表保留；现代版使用 `dsh-agent-preset`、`dsh-agent-preset-registry` 和公开 scope API，不能用改版本字符串或伪造旧 presets 包替代。
+旧版 Node 最低 22.16；现代版 Node 22.x 至少 22.18，或使用 24.2+（不支持 23.x），并检查 import.meta.main API。OpenSSL 3。`compatibility.json` 的 runtimeProfiles 是逐组件清单；未知 patch、缺包、混装和身份不符均拒绝启动。旧版组件表保留；现代版使用 `dsh-agent-preset`、`dsh-agent-preset-registry` 和公开 scope API，不能用改版本字符串或伪造旧 presets 包替代。
 
 ## Desktop 与 CLI
 
@@ -27,11 +27,11 @@ Web 设置页继续使用已认证的精确 Fetch 路由和原生 client bundle�
 
 ## 验证范围
 
-- CI 对 Windows/macOS/Linux、Node 22/24/26 运行源码测试；原生矩阵分别安装 legacy-012/modern-021，并在 Node 22.16.0/24.18.0 上跑固定引擎、安装和 profile 回归。具体通过状态以对应 commit 的 Actions 为准。
+- CI 对 Windows/macOS/Linux、Node 22/24/26 运行源码测试；原生矩阵分别安装 legacy-012/modern-021，并在 旧版 Node 22.16.0/24.18.0、现代版 Node 22.18.0/24.18.0 上跑固定引擎、安装和 profile 回归。具体通过状态以对应 commit 的 Actions 为准。
 - 本机已用两套实际 CLI 运行原生工具、审批、问答、模型/强度切换、分叉/压缩、取消、历史和停服回归。模型回复是本地确定性 fixture，不使用账号或模型权重。
 - 本机 Desktop 0.2.1-rc.3 的实际模块也在其 Electron Node 环境、独立测试 home/state 中运行；这不等于 Desktop GUI、用户既有 profile 或原 Windows 反馈电脑已验收。
 - 原生 shutdown 负控包括取消失败、丢失持久化尾部；应保留未决活动和锁。安装/profile 测试使用含空格及 & 的路径，并核对本地标准预设仍可用。
 
 真实配置的模型、原反馈 Desktop UI、HarmonyOS 双机 LAN、设备证书、Pro 权益和 RustDesk 传输分别验收。服务 ready、doctor、固定模型 fixture、真实模型和设备通过是不同证据。Windows 原生写隔离仍保留上游 partial 限制，不承诺容器隔离。macOS x64、Windows arm64、无人登录启动和任意扩展不属于默认验收范围。
 
-插件显式调用新版 CLI 的 runCli 导出（包括安装子命令），避免 Node 22.16/22.17 缺少 import.meta.main 时无输出退出；不改写上游安装。该 Node API 的版本边界见官方 [ESM 文档](https://nodejs.org/download/release/v22.23.0/docs/api/esm.html#importmetamain)。
+插件显式调用新版 CLI 的 runCli 导出（包括安装子命令），因为导入的 bin 不是主模块。现代原生 subprocess runner 也依赖 import.meta.main，因此 doctor/provision 在该 API 不可用时提前拒绝（22.16/22.17、23.x、24.0/24.1），不改写上游 runner 或扩大进程权限。该 Node API 的版本边界见官方 [ESM 文档](https://nodejs.org/download/release/v22.23.0/docs/api/esm.html#importmetamain)。

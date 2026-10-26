@@ -24,16 +24,17 @@ function interpolate(template, params) {
   );
 }
 
-async function loadBundle() {
+let bundleLoads = 0;
+async function loadBundle(react = fakeReact()) {
   const entries = [];
   globalThis.window = {
     __ModuleLoader__: { load: (entry) => entries.push(entry) },
   };
-  await import("../lib/client.js");
+  await import("../lib/client.js?test=" + bundleLoads++);
   assert.equal(entries.length, 1);
   const [entry] = entries;
   const modules = {
-    react: fakeReact(),
+    react,
     "react/jsx-runtime": { jsx: () => {}, jsxs: () => {}, Fragment: Symbol("Fragment") },
   };
   return { entry, exports: entry.factory((name) => modules[name]) };
@@ -132,4 +133,59 @@ test("client bundle registers one settings section with balanced dictionaries", 
   assert.equal(bundle.includes("String(snapshot.operations ?? 0)"), false);
 
   assert.deepEqual(effects, ["remotedesk-settings: section dictionaries"]);
+});
+
+test("project refresh preserves cleared and narrowed invitation permissions", async () => {
+  const states = [];
+  let cursor = 0, selectionEffects = [], component, snapshot;
+  const react = { ...fakeReact(),
+    useState(initial) {
+      const i = cursor++;
+      if (!(i in states)) states[i] = typeof initial === "function" ? initial() : initial;
+      return [states[i], (next) => { states[i] = typeof next === "function" ? next(states[i]) : next; }];
+    },
+    // The status transport and timers are platform boundaries. Run the actual
+    // snapshot reconciliation effect, with persistent hook state across renders.
+    useEffect(fn, deps) { if (deps.length === 1 && deps[0] === snapshot) selectionEffects.push(fn); },
+  };
+  const { exports } = await loadBundle(react);
+  exports.apply({ effect: (fn) => fn(),
+    locale: { bind: () => (key) => key, register: () => () => {} },
+    slots: { inject: (_slot, fn) => fn(), register: (_options, value) => { component = value; } },
+  });
+  const render = (projects) => {
+    snapshot = { projects, devices: [], invite: null, service: null, panel: { running: false }, sessions: [], operations: {} };
+    states[0] = snapshot;
+    cursor = 0; selectionEffects = [];
+    component({ copy: (key) => key });
+    for (const effect of selectionEffects) effect();
+    cursor = 0; selectionEffects = [];
+    return component({ copy: (key) => key });
+  };
+  const boxes = (tree, result = {}) => {
+    if (Array.isArray(tree)) { for (const node of tree) boxes(node, result); }
+    else if (tree && typeof tree === "object") {
+      if (tree.type === "input" && tree.props.type === "checkbox") result[tree.props["aria-label"]] = tree.props;
+      boxes(tree.children, result);
+    }
+    return result;
+  };
+  const a = { id: "a", title: "A" }, b = { id: "b", title: "B" }, c = { id: "c", title: "C" };
+  let controls = boxes(render([a, b]));
+  assert.equal(controls["pair.every"].checked, false, "all current/future projects requires explicit selection");
+  controls.A.onChange();
+  controls = boxes(render([a, b]));
+  assert.equal(controls.A.checked, true);
+  controls.A.onChange();
+  controls = boxes(render([a, b, c]));
+  assert.ok(Object.values(controls).every((control) => !control.checked), "cleared selection stays empty on refresh");
+  controls.A.onChange();
+  controls = boxes(render([b, c]));
+  assert.ok(Object.values(controls).every((control) => !control.checked), "a removed selected project cannot widen permission");
+  controls["pair.every"].onChange();
+  controls = boxes(render([b, c, a]));
+  assert.equal(controls["pair.every"].checked, true, "an explicitly chosen wildcard survives refresh");
+  controls["pair.every"].onChange();
+  controls = boxes(render([b, c]));
+  assert.ok(Object.values(controls).every((control) => !control.checked));
 });

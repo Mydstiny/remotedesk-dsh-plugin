@@ -4,7 +4,7 @@ import { mkdir, lstat, readdir, realpath, writeFile, access } from "node:fs/prom
 import { dirname, join, resolve, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
-import { runtimeProfiles, supportedNodeVersion, doctor } from "../src/runtime-contract.mjs";
+import { runtimeProfiles, supportedNodeVersion, supportedRuntimeNode, doctor } from "../src/runtime-contract.mjs";
 
 export async function npmEntry() {
   const binary = dirname(process.execPath);
@@ -26,6 +26,8 @@ export async function provisionRuntime({ destination, profileId = "modern-021" }
   if (!supportedNodeVersion(process.versions.node)) throw new Error("NODE_VERSION_UNSUPPORTED");
   const profile = runtimeProfiles().find((p) => p.id === profileId && p.enabled !== false);
   if (!profile) throw new Error("SUPPORTED_RUNTIME_PROFILE_REQUIRED");
+  if (!supportedRuntimeNode(profile) || (profile.requiresImportMetaMain && typeof import.meta.main !== "boolean"))
+    throw new Error("NODE_RUNTIME_PROFILE_UNSUPPORTED");
   if (!destination) throw new Error("RUNTIME_DESTINATION_REQUIRED");
   const root = resolve(destination);
   const npm = await npmEntry();
@@ -63,7 +65,7 @@ if (entry && await realpath(entry).catch(() => "") === fileURLToPath(import.meta
     }
     console.log(JSON.stringify(await provisionRuntime({ destination: options["--destination"], profileId: options["--profile"] })));
   } catch (error) {
-    const safe = /^(NODE_VERSION_UNSUPPORTED|SUPPORTED_RUNTIME_PROFILE_REQUIRED|RUNTIME_DESTINATION_REQUIRED|RUNTIME_DESTINATION_MUST_BE_EMPTY_DIRECTORY|NPM_CLI_REQUIRED|RUNTIME_INSTALL_FAILED_KEEP_DIRECTORY_FOR_DIAGNOSIS|PROVISIONED_RUNTIME_UNVERIFIED|USAGE_DESTINATION_AND_OPTIONAL_PROFILE)$/;
+    const safe = /^(NODE_VERSION_UNSUPPORTED|NODE_RUNTIME_PROFILE_UNSUPPORTED|SUPPORTED_RUNTIME_PROFILE_REQUIRED|RUNTIME_DESTINATION_REQUIRED|RUNTIME_DESTINATION_MUST_BE_EMPTY_DIRECTORY|NPM_CLI_REQUIRED|RUNTIME_INSTALL_FAILED_KEEP_DIRECTORY_FOR_DIAGNOSIS|PROVISIONED_RUNTIME_UNVERIFIED|USAGE_DESTINATION_AND_OPTIONAL_PROFILE)$/;
     console.error(JSON.stringify({ installed: false, code: safe.test(error.message) ? error.message : "RUNTIME_PROVISION_FAILED" }));
     process.exitCode = 2;
   }

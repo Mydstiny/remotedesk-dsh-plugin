@@ -2,7 +2,7 @@
 
 Version **0.3.1** uses native host tools and requires no Docker. It provides authenticated project access, sessions/history, model and reasoning selection, streaming native tool output, approvals/questions, steering/cancellation, forks, compaction and owned background-job controls.
 
-Requires Node **22.16+**, OpenSSL 3 and DeepSeek Harness **0.1.2-rc.1 or 0.2.1-rc.3**, plus pnpm for native profile installation. Model authentication stays in the configured native host. Unknown engine versions fail closed.
+Requires Node **22.16+ for legacy; 22.18+ on 22.x or 24.2+ for modern**, OpenSSL 3 and DeepSeek Harness **0.1.2-rc.1 or 0.2.1-rc.3**, plus pnpm for native profile installation. Model authentication stays in the configured native host. Unknown engine versions fail closed.
 
 Read [native permission boundaries](SECURITY.md), then follow [installation and operations](docs/operations.md). Install from the fixed reviewed source commit supplied by the application installer; verify SHA256SUMS separately when using published release assets. The listener defaults to loopback port 9444; installing the plugin alone does not start it. The [local control panel](docs/control-panel.md) is started explicitly and remains loopback-only.
 

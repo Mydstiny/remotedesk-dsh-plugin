@@ -4,7 +4,7 @@
 
 核对 README、compatibility.json、SECURITY 和应用安装指引指定的完整固定源码提交；若另行使用发行资产，再核对其 SHA256SUMS。源码或资产放到当前用户可写的持久版本目录，例如 `RemoteDesk/dsh/0.3.1`。所有命令从该目录运行。使用普通用户；不要让服务引用临时目录，不以 root/SYSTEM 运行。
 
-需要 Node.js 22.16+、OpenSSL 3、DSH **0.1.2-rc.1 或 0.2.1-rc.3**，pnpm 分别为 11.21.0 / 12.6.0。使用宿主原有 provider 配置，不复制/显示密钥，不修改全局模型默认值。`doctor --json` 只验证版本和结构，实际模型调用需单独测试。无需容器、镜像或 Docker daemon。
+需要 Node.js：旧版 22.16+；现代版 22.x 至少 22.18，或使用 24.2+（不支持 23.x）。另需 OpenSSL 3、DSH **0.1.2-rc.1 或 0.2.1-rc.3**，pnpm 分别为 11.21.0 / 12.6.0。使用宿主原有 provider 配置，不复制/显示密钥，不修改全局模型默认值。`doctor --json` 只验证版本和结构，实际模型调用需单独测试。无需容器、镜像或 Docker daemon。
 
 ## 仅安装 Desktop 时准备独立 CLI
 

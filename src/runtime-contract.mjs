@@ -20,6 +20,15 @@ export function supportedNodeVersion(version) {
   return major > 22 || (major === 22 && minor >= 16);
 }
 
+// The modern native subprocess runner, not only its CLI, relies on this API.
+// Refuse unsupported hosts before mounting tools; do not patch engine runners.
+export function supportedRuntimeNode(profile, version = process.versions.node) {
+  if (!supportedNodeVersion(version)) return false;
+  if (!profile.requiresImportMetaMain) return true;
+  const [major, minor] = String(version).split(".").map(Number);
+  return (major === 22 && minor >= 18) || (major === 24 && minor >= 2) || major > 24;
+}
+
 export async function locateRuntime({ runtimeRoot } = {}) {
   const explicitRoot = runtimeRoot ?? process.env.REMOTEDESK_DSH_RUNTIME_ROOT;
   if (explicitRoot) {
@@ -117,6 +126,12 @@ export async function doctor({ runtimeRoot, runtime } = {}) {
     const resolved = runtime ?? await resolveRuntime({ runtimeRoot });
     Object.assign(report.componentVersions, resolved.versions);
     report.runtime = { kind: resolved.kind, version: resolved.version, contract: resolved.profile.id };
+    if (resolved.profile.requiresImportMetaMain) {
+      const valid = supportedRuntimeNode(resolved.profile) && typeof import.meta.main === "boolean";
+      report.checks.push({ id: "node-native-runner", status: valid ? "pass" : "fail",
+        code: valid ? "NATIVE_RUNNER_ENTRY_SUPPORTED" : "NODE_NATIVE_RUNNER_UNSUPPORTED",
+        expected: resolved.profile.nodeRange, actual: process.versions.node });
+    }
     const cliMatch = resolved.profile.cliVersions.includes(resolved.version);
     report.checks.push({ id: resolved.kind === "cli" ? "@deepseek-ai/dsh" : "desktop-engine", status: cliMatch ? "pass" : "fail",
       code: cliMatch ? "PINNED_VERSION" : "UNVERIFIED_COMPONENT_VERSION",
@@ -130,6 +145,11 @@ export async function doctor({ runtimeRoot, runtime } = {}) {
   }
   if (report.status !== "ok") {
     report.requiresUserAction.push("CHECK_EXACT_COMPONENT_VERSIONS");
+    if (report.checks.some((c) => c.code === "NODE_NATIVE_RUNNER_UNSUPPORTED")) {
+      report.requiresUserAction.push("USE_NODE_WITH_IMPORT_META_MAIN");
+      report.actions.push({ code: "USE_SUPPORTED_NODE_FOR_MODERN_RUNTIME",
+        message: "Modern native runners require Node 22.18+ on 22.x, or 24.2+. Node 22.16/22.17, 23.x and 24.0/24.1 cannot execute this engine's managed subprocess entry." });
+    }
     report.actions.push({ code: "USE_SEPARATE_PINNED_CLI_RUNTIME",
       message: "Desktop alone is not a standalone CLI installation. Keep Desktop installed; provision a supported exact CLI in a separate directory and set REMOTEDESK_DSH_RUNTIME_ROOT to its @deepseek-ai/dsh package directory.",
       expectedLayout: "<installation>/node_modules/@deepseek-ai/dsh/package.json" });

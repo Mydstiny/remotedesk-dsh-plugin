@@ -8,7 +8,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const exec = promisify(execFile);
 const profiles = JSON.parse(await readFile(new URL("../compatibility.json", import.meta.url))).runtimeProfiles;
-for (const profile of profiles) test(`${profile.id} CLI entry executes once and preserves literal arguments`, async (t) => {
+for (const profile of profiles) test(`${profile.id} CLI entry validates its native runner before executing literal arguments`, async (t) => {
   const root = await mkdtemp(join(tmpdir(), "remotedesk-cli-entry-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "@deepseek-ai/dsh", version: profile.cliVersions[0], type: "module" }));
@@ -22,6 +22,11 @@ for (const profile of profiles) test(`${profile.id} CLI entry executes once and 
   await writeFile(join(root, "lib/bin.js"), profile.id === "modern-021" ?
     `export async function runCli() { ${report} }\nif (import.meta.main) await runCli();\n` : report);
   const args = ["plugin", "--profile", "literal & spaces", "add", "file:literal.tgz"];
+  if (profile.requiresImportMetaMain && typeof import.meta.main !== "boolean") {
+    await assert.rejects(exec(process.execPath, [fileURLToPath(new URL("../bin/native-cli-entry.mjs", import.meta.url)), root, ...args]),
+      (error) => /DSH_RUNTIME_UNVERIFIED/.test(error.stderr));
+    return;
+  }
   const result = await exec(process.execPath, [fileURLToPath(new URL("../bin/native-cli-entry.mjs", import.meta.url)), root, ...args]);
   const lines = result.stdout.trim().split("\n");
   assert.equal(lines.length, 1);

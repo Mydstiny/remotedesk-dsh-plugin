@@ -10,10 +10,9 @@ import {
   copyFile,
   rm,
   access,
-  chmod,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, dirname, delimiter } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -49,14 +48,14 @@ async function command(bin, args, options = {}) {
   try {
     if (bin === "npm") { args = [await npmEntry(), ...args]; bin = process.execPath; }
     return await exec(bin, args, { maxBuffer: 4e6, ...options });
-  } catch {
+  } catch (error) {
     throw new Error(
       "PROFILE_FIXTURE_COMMAND_FAILED_" +
         (args.includes("plugin-install")
           ? "plugin-install"
           : args.includes("pack")
             ? "pack"
-            : "native-install"),
+            : "native-install") + ": " + String(error.stderr ?? error.message).replaceAll(scratch, "<fixture>").slice(-2500),
     );
   }
 }
@@ -128,27 +127,17 @@ try {
     config.coordinationDirectory = join(root, "coordination");
     await writeFile(join(state, "config.json"), JSON.stringify(config));
     if (profile === "remotedesk-test") {
-      const fakeBin = join(root, "failing-pnpm");
-      await mkdir(fakeBin);
-      await writeFile(join(fakeBin, process.platform === "win32" ? "pnpm.cmd" : "pnpm"), process.platform === "win32" ? "@echo off\r\nexit /b 7\r\n" : "#!/bin/sh\nexit 7\n");
-      if (process.platform !== "win32") await chmod(join(fakeBin, "pnpm"), 0o700);
-      await assert.rejects(
-        command(
-          process.execPath,
-          [
-            cli,
-            "plugin-install",
-            "--state",
-            state,
-            "--profile",
-            profile,
-            "--package",
-            join(scratch, packed.filename),
-          ],
-          { env: { ...env, PATH: fakeBin + delimiter + env.PATH } },
-        ),
-      );
-      await access(join(env.DSH_HOME, "profiles", profile, "package.json"));
+      const brokenArchive = join(root, "broken-fixture.tgz");
+      await writeFile(brokenArchive, "REMOTEDESK_INTENTIONAL_INVALID_TARBALL");
+      await assert.rejects(command(process.execPath, [cli, "plugin-install", "--state", state,
+        "--profile", profile, "--package", brokenArchive], { env }), /plugin-install/);
+      // Upstream may reject package metadata before it creates package.json.
+      // Our durable ownership intent must survive either partial-install stage.
+      const intent = JSON.parse(await readFile(join(state, "profile-install.json"), "utf8"));
+      assert.equal(intent.ownedProfile, true);
+      assert.equal(intent.profile, profile);
+      assert.equal(intent.profilePath, join(env.DSH_HOME, "profiles", profile));
+      await assert.rejects(access(join(state, "launch.json")), { code: "ENOENT" });
     }
     await command(
       process.execPath,

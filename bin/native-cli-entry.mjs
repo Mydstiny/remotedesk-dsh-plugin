@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Invoke the pinned CLI export explicitly. import.meta.main is absent on
-// Node 22.16/22.17, so merely spawning the upstream 0.2.1 bin can exit silently.
+// Invoke the pinned modern CLI export explicitly: an imported upstream bin is
+// not import.meta.main. The runtime contract also verifies native runner support.
 import { isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveRuntime, doctor } from "../src/doctor.mjs";
