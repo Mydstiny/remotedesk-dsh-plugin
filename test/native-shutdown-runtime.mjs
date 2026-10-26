@@ -25,7 +25,7 @@ const { Store } = await moduleAt(
   require.resolve("@remotedesk/bridge-core/store"),
 );
 const { DshAdapter } = await moduleAt(join(source, "src/dsh-adapter.mjs"));
-const { locateRuntime } = await moduleAt(join(source, "src/doctor.mjs"));
+const { locateRuntime, resolveDesktopRuntime } = await moduleAt(join(source, "src/doctor.mjs"));
 const { boot } = await moduleAt(join(source, "test/native-host.mjs"));
 const originalCwd = process.cwd();
 const originalHome = process.env.DSH_HOME;
@@ -44,7 +44,7 @@ const exists = (path) =>
   );
 
 try {
-  const runtime = await locateRuntime();
+  const runtime = process.env.REMOTEDESK_DSH_TEST_DESKTOP === "1" ? await resolveDesktopRuntime() : await locateRuntime();
   const host = await boot(root, runtime);
   ({ ctx } = host);
   assert.deepEqual(host.inactive, []);
@@ -80,7 +80,7 @@ try {
     config.port = 0;
     config.coordinationDirectory = join(state, "coordination");
     await writeFile(join(state, "config.json"), JSON.stringify(config));
-    const adapter = new DshAdapter(ctx, { runtimeRoot: runtime });
+    const adapter = new DshAdapter(ctx, { runtime: host.runtime });
     const bridge = new Bridge(state, adapter);
     let restoreReadFrom;
     try {
@@ -113,7 +113,7 @@ try {
           finish = resolve;
         });
         ctx.jobs.start({
-          owner: handle.agent,
+          owner: adapter.jobCaller(handle.agent),
           kind: "shutdown-fixture",
           label: scenario,
           run() {
@@ -137,8 +137,8 @@ try {
       await handle.dispose();
       assert.equal(
         ctx.jobs
-          .list(handle.agent)
-          .filter((job) => job.ownerSession === session.id).length,
+          .list(adapter.jobCaller(handle.agent))
+          .filter((job) => adapter.jobOwnedBy(job, handle.agent)).length,
         0,
       );
       const audit = await handle.lifecycle.jobs;
@@ -154,16 +154,31 @@ try {
 
       if (scenario === "missing-durable-tail") {
         const persistence = ctx.sessionPersistence;
-        const original = persistence.readFrom;
-        restoreReadFrom = () => {
-          persistence.readFrom = original;
-        };
-        persistence.readFrom = async function (...args) {
-          const stored = await original.apply(this, args);
-          if (args[0] !== session.id) return stored;
-          assert.ok(stored.events.length > 0);
-          return { ...stored, events: stored.events.slice(0, -1) };
-        };
+        if (adapter.runtime.profile.id === "modern-021") {
+          const original = persistence.open;
+          restoreReadFrom = () => { persistence.open = original; };
+          persistence.open = async function (...args) {
+            const reader = await original.apply(this, args);
+            if (args[0] === session.id && args[1] === "read") {
+              const read = reader.read.bind(reader);
+              reader.read = async (...readArgs) => {
+                const stored = await read(...readArgs);
+                assert.ok(stored.events.length > 0);
+                return { ...stored, events: stored.events.slice(0, -1) };
+              };
+            }
+            return reader;
+          };
+        } else {
+          const original = persistence.readFrom;
+          restoreReadFrom = () => { persistence.readFrom = original; };
+          persistence.readFrom = async function (...args) {
+            const stored = await original.apply(this, args);
+            if (args[0] !== session.id) return stored;
+            assert.ok(stored.events.length > 0);
+            return { ...stored, events: stored.events.slice(0, -1) };
+          };
+        }
       }
 
       const failureExpected = scenario !== "completed-cleanup";

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "recordedDate": "2026-09-07",
-  "adapterVersion": "0.3.0",
+  "recordedDate": "2026-10-26",
+  "adapterVersion": "0.3.1",
   "originalCodeLicense": "MIT",
   "ciActions": {
     "actions/checkout": "11d5960a326750d5838078e36cf38b85af677262",
@@ -11,7 +11,7 @@
   "externalPrerequisites": [
     "Node.js >=22.16",
     "OpenSSL 3",
-    "pnpm on PATH; CI tested 11.21.0"
+    "pnpm 11.21.0 (legacy-012) or 12.6.0 (modern-021); provisioned with the exact runtime"
   ],
   "modelFixture": "Original deterministic local test responses; no model weights, credentials or user transcripts included.",
   "redistributedDependencies": [
@@ -56,6 +56,20 @@
       "sha256": "8a2c15e2a4f5dded484005e1b3066acb40dad98f4186d8dd4feb3feba190d261",
       "source": "https://github.com/deepseek-ai/deepseek-harness",
       "modifications": "Delegation group disabled. Other standard preset rows preserved."
+    },
+    {
+      "name": "DSH modern native preset subset",
+      "upstreamPackage": "@deepseek-ai/dsh-web-app",
+      "upstreamVersion": "0.2.1-rc.3",
+      "source": "https://registry.npmjs.org/@deepseek-ai/dsh-web-app/-/dsh-web-app-0.2.1-rc.3.tgz",
+      "integrity": "sha512-Rhgq5CUumgdLr3esCGIecX92cjiz7Avrpj8p5usLE4/bLyMZ7JE3+AHzUroidBIc4GlMskYASsr2FpmE1ze5gw==",
+      "upstreamFile": "presets/standard.patch.yml",
+      "upstreamFileSha256": "0d398d2a6872a73a106cb3bd19303ecccf1637e1fcad4d0bf9d8a72d2c2c68f5",
+      "file": "presets/modern-native.json",
+      "sha256": "eb7f4d0a024f3921ecb8a466e7b5e463f147ae815053aafbb753160eae63f6c9",
+      "license": "MIT",
+      "licenseFile": "presets/LICENSE.DeepSeek",
+      "modifications": "Retains the verified native tools/prompt/skills subset; removes delegation, workflow, scheduler and extension/plugin tools. Shell enablement is selected explicitly for each platform."
     }
   ],
   "externalRuntimeComponents": [
@@ -399,10 +413,10 @@
   "runtimeCompatibilityWork": {
     "issue": "https://github.com/Mydstiny/remotedesk-dsh-plugin/issues/13",
     "date": "2026-10-26",
-    "modernAdapterEnabled": false,
+    "modernAdapterEnabled": true,
     "modernCli": "0.2.1-rc.3",
     "cordis": "4.0.5",
-    "evidence": "Exact npm package integrity checked by isolated install; component metadata only at diagnostic milestone",
+    "evidence": "Legacy CLI and modern CLI/Desktop-module native flows, real packed profile installation, permission guards and shutdown negative controls verified locally; cross-platform CI recorded per commit. Model replies are local deterministic fixtures.",
     "externalArtifacts": [
       {
         "version": "0.2.1-rc.3",
@@ -417,5 +431,118 @@
         "name": "@deepseek-ai/cordis"
       }
     ]
+  },
+  "runtimeContracts": {
+    "legacy-012": {
+      "cliVersions": [
+        "0.1.2-rc.1"
+      ],
+      "components": {
+        "@deepseek-ai/cordis": "4.0.2",
+        "@deepseek-ai/dsh-base": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-user-approval": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-user-questions": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-loop": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tools": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-llm": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-system-prompt": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-projection": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-persistence-jsonl": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-attachment-local": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-default-model": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-presets": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-sandbox-local": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-sandbox-policy": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-subprocess-local": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-jobs": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-query": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-session-title": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-app-boot": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-fs": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-jobs": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-terminal": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-bash-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-pwsh-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-fs-sandbox": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-compaction-basic": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-bash": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-tool-pwsh": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-agent-instructions": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-cmdline": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-client-connection": "0.1.2-rc.1",
+        "@deepseek-ai/dsh-client-modules": "0.1.2-rc.1"
+      },
+      "pnpmVersion": "11.21.0"
+    },
+    "modern-021": {
+      "cliVersions": [
+        "0.2.1-rc.3"
+      ],
+      "components": {
+        "@deepseek-ai/cordis": "4.0.5",
+        "@deepseek-ai/dsh-base": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-user-approval": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-user-questions": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-loop": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tools": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-projection": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-persistence-jsonl": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-attachment-local": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-default-model": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-sandbox-local": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-sandbox-policy": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-subprocess-local": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-jobs": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-query": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-title": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-app-boot": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-fs": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-jobs": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-terminal": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-bash-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-pwsh-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-fs-sandbox": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-compaction-basic": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-bash": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-pwsh": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-instructions": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-cmdline": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-client-connection": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-client-modules": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-preset": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-agent-preset-registry": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-scope": "0.2.1-rc.3",
+        "@deepseek-ai/schemastery": "3.18.5",
+        "@deepseek-ai/cordis-plugin-loader": "1.0.6",
+        "@deepseek-ai/cordis-plugin-group": "1.0.5",
+        "@deepseek-ai/cordis-plugin-include": "1.0.10",
+        "@deepseek-ai/dsh-persona": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-time-context": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-fs-search": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-skill-filesystem": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-skill": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-command-goal": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-goal": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-plan-mode": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-command-compact": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-compaction-tool-result-pruner": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-ask-user": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-todo": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-tool-web": "0.2.1-rc.3",
+        "js-yaml": "4.3.2",
+        "@deepseek-ai/dsh-working-directory": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-session-persistence": "0.2.1-rc.3",
+        "@deepseek-ai/dsh-jobs-local": "0.2.1-rc.3"
+      },
+      "pnpmVersion": "12.6.0"
+    }
   }
 }

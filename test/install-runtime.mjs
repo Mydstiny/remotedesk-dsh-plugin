@@ -62,8 +62,12 @@ try {
     );
     throw new Error("NATIVE_PROFILE_INSTALL_FAILED");
   }
+  const launch = JSON.parse(await readFile(join(state, "launch.json"), "utf8"));
+  assert.ok(launch.runtimeRoot && launch.runtimeVersion && launch.runtimeProfile);
+  const serveEnv = { ...env };
+  delete serveEnv.REMOTEDESK_DSH_RUNTIME_ROOT;
   child = spawn(process.execPath, [cli, "serve", "--state", state], {
-    env,
+    env: serveEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
   exited = new Promise((r) => child.once("exit", r));
@@ -82,7 +86,7 @@ try {
     await new Promise((r) => setTimeout(r, 100));
   assert.ok(
     output.includes('"ready":true'),
-    "installed native bundle must start its TLS bridge",
+    "installed native bundle must start its TLS bridge: " + output.replaceAll(root, "<fixture>").slice(0, 2000),
   );
   const identity = JSON.parse(await readFile(join(state, "server.lock")));
   assert.equal(identity.pid, child.pid);

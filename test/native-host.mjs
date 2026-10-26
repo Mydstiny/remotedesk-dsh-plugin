@@ -2,8 +2,13 @@ import { createRequire } from "node:module";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { resolveRuntime } from "../src/doctor.mjs";
+import { modernPresetDeclaration } from "../src/native-preset.mjs";
 
 export async function boot(root, runtime, options = {}) {
+  const contract = typeof runtime === "string" ? await resolveRuntime({ runtimeRoot: runtime }) : runtime;
+  runtime = contract.root;
+  const modern = contract.profile.id === "modern-021";
   const workspace = join(root, "workspace");
   await mkdir(workspace, { recursive: true });
   await mkdir(join(root, "dsh-home"), { recursive: true });
@@ -74,6 +79,7 @@ export async function boot(root, runtime, options = {}) {
     ["@deepseek-ai/dsh-shell-env", {}],
     ["@deepseek-ai/dsh-fs-sandbox", { cwd: workspace }],
     ["@deepseek-ai/dsh-fs-observation-policy", {}],
+    ...(modern ? [["@deepseek-ai/dsh-working-directory", { defaultDirectory: workspace }]] : []),
     ["@deepseek-ai/dsh-jobs-local", {}],
     ["@deepseek-ai/dsh-skill", {}],
     ["@deepseek-ai/dsh-commands", {}],
@@ -87,25 +93,31 @@ export async function boot(root, runtime, options = {}) {
       { enabled: false, allowedModels: [] },
     ],
     ["@deepseek-ai/dsh-web", {}],
-    [
-      "@deepseek-ai/dsh-agent-presets",
-      {
-        default: "standard",
-        roots: presetRoots,
-        includeShippedRoot: true,
-        includeUserRoot: false,
-      },
-    ],
+    [modern ? "@deepseek-ai/dsh-agent-preset-registry" : "@deepseek-ai/dsh-agent-presets",
+      modern ? { default: options.defaultPreset ?? "remotedesk-native" } : {
+        default: "standard", roots: presetRoots, includeShippedRoot: true, includeUserRoot: false,
+      }],
     ["@deepseek-ai/dsh-agent-loop", { agents: [] }],
   ];
   try {
     for (const [name, config] of rows)
       await ctx.loader.create({ name, config });
+    if (modern) {
+      const declaration = await modernPresetDeclaration();
+      if (!options.skipRemotePreset) await ctx.loader.create(declaration);
+      // A separate local preset retains a real upstream delegation tool. The
+      // remote adapter must narrow only its own Agent, never this local one.
+      await ctx.loader.create({ id: "fixture-standard", name: declaration.name,
+        config: { id: "standard", plugins: [...declaration.config.plugins, {
+          id: "tool-subagent-fork", name: "@deepseek-ai/dsh-tool-subagent",
+          config: { provider: "fork", toolName: "subagent_fork" },
+        }] } });
+    }
     await ctx.loader.await();
     const inactive = [...ctx.loader.entries()]
       .filter((e) => !e.disabled && e.fiber === undefined)
       .map((e) => ({ name: e.options.name }));
-    return { ctx, workspace, load, rows, inactive };
+    return { ctx, workspace, load, rows, inactive, runtime: contract };
   } catch (error) {
     await ctx.fiber.dispose();
     throw error;

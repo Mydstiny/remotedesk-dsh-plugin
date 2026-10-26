@@ -13,7 +13,7 @@ import {
   chmod,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
@@ -27,11 +27,13 @@ import {
 } from "@remotedesk/bridge-core/admin";
 import { pairClient, loadClient } from "@remotedesk/bridge-core/client";
 import { requestStop } from "@remotedesk/bridge-core/service";
-import { locateRuntime } from "../src/doctor.mjs";
+import { locateRuntime, resolveRuntime } from "../src/doctor.mjs";
+import { npmEntry } from "../bin/provision-dsh-runtime.mjs";
 const exec = promisify(execFile),
   source = dirname(dirname(fileURLToPath(import.meta.url)));
 const cli = join(source, "bin/remotedesk-dsh.mjs"),
-  native = join(await locateRuntime(), "lib/bin.js");
+  runtime = await resolveRuntime(),
+  native = fileURLToPath(new URL("../bin/native-cli-entry.mjs", import.meta.url));
 const scratch = await realpath(
   await mkdtemp(join(tmpdir(), "remotedesk-profile-test-")),
 );
@@ -45,6 +47,7 @@ const port = async () => {
 };
 async function command(bin, args, options = {}) {
   try {
+    if (bin === "npm") { args = [await npmEntry(), ...args]; bin = process.execPath; }
     return await exec(bin, args, { maxBuffer: 4e6, ...options });
   } catch {
     throw new Error(
@@ -94,7 +97,7 @@ try {
         type: "module",
         exports: { ".": "./index.mjs", "./local": "./local.mjs" },
         dsh: { bundle: { patch: "./cordis.patch.yml" } },
-        dependencies: { "@deepseek-ai/dsh-llm": "0.1.2-rc.1" },
+        dependencies: { "@deepseek-ai/dsh-llm": runtime.version },
       }),
     );
     await copyFile(
@@ -127,8 +130,8 @@ try {
     if (profile === "remotedesk-test") {
       const fakeBin = join(root, "failing-pnpm");
       await mkdir(fakeBin);
-      await writeFile(join(fakeBin, "pnpm"), "#!/bin/sh\nexit 7\n");
-      await chmod(join(fakeBin, "pnpm"), 0o700);
+      await writeFile(join(fakeBin, process.platform === "win32" ? "pnpm.cmd" : "pnpm"), process.platform === "win32" ? "@echo off\r\nexit /b 7\r\n" : "#!/bin/sh\nexit 7\n");
+      if (process.platform !== "win32") await chmod(join(fakeBin, "pnpm"), 0o700);
       await assert.rejects(
         command(
           process.execPath,
@@ -142,7 +145,7 @@ try {
             "--package",
             join(scratch, packed.filename),
           ],
-          { env: { ...env, PATH: fakeBin + ":" + env.PATH } },
+          { env: { ...env, PATH: fakeBin + delimiter + env.PATH } },
         ),
       );
       await access(join(env.DSH_HOME, "profiles", profile, "package.json"));
@@ -176,7 +179,7 @@ try {
     )[0];
     await command(
       process.execPath,
-      [native, "plugin", "--profile", profile, "add", join(root, fp.filename)],
+      [native, runtime.root, "plugin", "--profile", profile, "add", join(root, fp.filename)],
       { env },
     );
     let output = "",
@@ -184,8 +187,10 @@ try {
       exited;
     const start = () => {
       output = "";
+      const serveEnv = { ...env };
+      delete serveEnv.REMOTEDESK_DSH_RUNTIME_ROOT;
       child = spawn(process.execPath, [cli, "serve", "--state", state], {
-        env,
+        env: serveEnv,
         stdio: ["ignore", "pipe", "pipe"],
       });
       child.stdout.on("data", (d) => {
@@ -204,7 +209,7 @@ try {
         child.exitCode === null
       )
         await delay(100);
-      assert.ok(output.includes('"ready":true'), "native profile must start");
+      assert.ok(output.includes('"ready":true'), "native profile must start: " + output.replaceAll(scratch, "<fixture>").slice(0, 2000));
     };
     const stop = async () => {
       await requestStop(state);

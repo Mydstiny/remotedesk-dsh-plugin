@@ -58,17 +58,23 @@ export async function locateRuntime({ runtimeRoot } = {}) {
 // The descriptor is private to this process. Reports expose no installation paths.
 export async function resolveRuntime({ runtimeRoot } = {}) {
   const root = await locateRuntime({ runtimeRoot });
+  return descriptor(root, "cli");
+}
+
+async function descriptor(root, kind) {
   const anchor = join(root, "package.json");
-  const pkg = await metadata(anchor);
-  if (pkg.name !== "@deepseek-ai/dsh") throw new Error("NOT_DSH_INSTALLATION");
+  const require = createRequire(anchor);
+  const pkg = kind === "cli" ? await metadata(anchor) :
+    await metadata(require.resolve("@deepseek-ai/dsh-base/package.json"));
+  if (pkg.name !== (kind === "cli" ? "@deepseek-ai/dsh" : "@deepseek-ai/dsh-base"))
+    throw new Error("NOT_DSH_INSTALLATION");
   const version = safeVersion(pkg.version);
   if (!version) throw new Error("RUNTIME_METADATA_UNAVAILABLE");
   const profiles = runtimeProfiles();
   const profile = profiles.find((p) => p.cliVersions.includes(version)) ??
     profiles.find((p) => p.cliVersions.some((v) => v.split(".").slice(0, 2).join(".") === version.split(".").slice(0, 2).join("."))) ?? profiles[0];
-  const require = createRequire(anchor);
   const checks = [];
-  const versions = { "@deepseek-ai/dsh": version };
+  const versions = { [kind === "cli" ? "@deepseek-ai/dsh" : "@deepseek-ai/dsh-base"]: version };
   for (const [name, expected] of Object.entries(profile.components)) {
     try {
       const pkg = await metadata(require.resolve(`${name}/package.json`));
@@ -86,8 +92,8 @@ export async function resolveRuntime({ runtimeRoot } = {}) {
         code: error.code === "MODULE_NOT_FOUND" || error.code === "ENOENT" ? "COMPONENT_MISSING" : "COMPONENT_METADATA_UNAVAILABLE" });
     }
   }
-  return Object.freeze({ root, anchor, kind: "cli", version, profile, checks, versions,
-    entry: join(root, "lib", "bin.js"),
+  return Object.freeze({ root, anchor, kind, version, profile, checks, versions,
+    entry: kind === "cli" ? join(root, "lib", "bin.js") : undefined,
     load: async (name) => import(pathToFileURL(require.resolve(name)).href),
     resolve: (name) => require.resolve(name),
   });
@@ -112,7 +118,7 @@ export async function doctor({ runtimeRoot, runtime } = {}) {
     Object.assign(report.componentVersions, resolved.versions);
     report.runtime = { kind: resolved.kind, version: resolved.version, contract: resolved.profile.id };
     const cliMatch = resolved.profile.cliVersions.includes(resolved.version);
-    report.checks.push({ id: "@deepseek-ai/dsh", status: cliMatch ? "pass" : "fail",
+    report.checks.push({ id: resolved.kind === "cli" ? "@deepseek-ai/dsh" : "desktop-engine", status: cliMatch ? "pass" : "fail",
       code: cliMatch ? "PINNED_VERSION" : "UNVERIFIED_COMPONENT_VERSION",
       expected: resolved.profile.cliVersions, actual: resolved.version }, ...resolved.checks);
     if (resolved.profile.enabled === false)
@@ -129,4 +135,35 @@ export async function doctor({ runtimeRoot, runtime } = {}) {
       expectedLayout: "<installation>/node_modules/@deepseek-ai/dsh/package.json" });
   }
   return report;
+}
+
+// Desktop discovery is confined to the running Electron installation. A CLI
+// process never treats an asar archive as an executable runtime root.
+export async function resolveHostRuntime(ctx, { runtimeRoot } = {}) {
+  let runtime;
+  if (process.versions.electron && process.resourcesPath) {
+    runtime = await resolveDesktopRuntime();
+  } else {
+    runtime = await resolveRuntime({ runtimeRoot });
+  }
+  await assertRuntimeContext(ctx, runtime);
+  return runtime;
+}
+
+export async function assertRuntimeContext(ctx, runtime) {
+  if ((await doctor({ runtime })).status !== "ok") throw new Error("DSH_RUNTIME_UNVERIFIED");
+  const bindings = [["agents", "dsh-agent"], ["sessions", "dsh-session"],
+    ["tools", "dsh-tools"], ["approval", "dsh-user-approval"],
+    ["agentPresets", runtime.profile.id === "modern-021" ? "dsh-agent-preset-registry" : "dsh-agent-presets"]];
+  for (const [service, name] of bindings) {
+    const exports = await runtime.load("@deepseek-ai/" + name);
+    if (typeof exports.default !== "function" || !(ctx[service] instanceof exports.default))
+      throw new Error("DSH_RUNTIME_CONTEXT_MISMATCH");
+  }
+}
+
+export async function resolveDesktopRuntime() {
+  if (!process.versions.electron || !process.resourcesPath)
+    throw new Error("DSH_DESKTOP_HOST_REQUIRED");
+  return descriptor(join(process.resourcesPath, "app.asar", "dsh"), "desktop");
 }

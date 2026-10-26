@@ -2,8 +2,9 @@ import { resolve } from "node:path";
 import { requireThat } from "@remotedesk/bridge-core/errors";
 import { assertProfile } from "./profile-policy.mjs";
 import { Bridge } from "@remotedesk/bridge-core";
-import { doctor } from "./doctor.mjs";
+import { resolveHostRuntime } from "./doctor.mjs";
 import { DshAdapter } from "./dsh-adapter.mjs";
+import { ensureModernPreset } from "./native-preset.mjs";
 import { ensureControlPanel } from "./control-panel.mjs";
 import { registerWebPanel, webSnapshot, defaultStateDirectory } from "./web-panel.mjs";
 // DSH can load the package once for the launcher and once through the profile
@@ -26,11 +27,11 @@ export async function shutdown(directory) {
     await host.bridge.stop();
   } catch (error) {
     host.exit(1);
-    scheduleProcessExit(1);
+    if (host.ownsProcess) scheduleProcessExit(1);
     throw error;
   }
   host.exit(0);
-  scheduleProcessExit(0);
+  if (host.ownsProcess) scheduleProcessExit(0);
 }
 export const name = "remotedesk-bridge";
 export const inject = [
@@ -66,16 +67,17 @@ export async function apply(ctx, config = {}) {
     registerWebPanel(ctx, { state, engine: "dsh" });
     return;
   }
-  if ((await doctor()).status !== "ok")
-    throw new Error("DSH_RUNTIME_UNVERIFIED");
+  const runtime = await resolveHostRuntime(ctx);
   assertProfile(ctx, { requireLoader: true });
-  const exit = ctx.get("appExit");
+  const ownsProcess = runtime.kind === "cli";
+  const exit = ownsProcess ? ctx.get("appExit") : () => {};
   requireThat(typeof exit === "function", "NATIVE_SHUTDOWN_UNAVAILABLE");
-  const adapter = new DshAdapter(ctx);
+  if (runtime.profile.id === "modern-021") await ensureModernPreset(ctx, runtime);
+  const adapter = new DshAdapter(ctx, { runtime });
   const bridge = new Bridge(directory, adapter);
   const key = resolve(directory);
   requireThat(!hosts.has(key), "NATIVE_HOST_ALREADY_REGISTERED");
-  const host = { bridge, exit };
+  const host = { bridge, exit, ownsProcess };
   hosts.set(key, host);
   ctx.effect(() => async () => {
     try {

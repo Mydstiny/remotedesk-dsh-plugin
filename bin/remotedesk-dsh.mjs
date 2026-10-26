@@ -6,15 +6,15 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { join, resolve, dirname } from "node:path";
+import { join, resolve, dirname, isAbsolute } from "node:path";
 import { readFile, writeFile, stat, lstat, mkdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { main } from "@remotedesk/bridge-core/cli";
 import { requireThat } from "@remotedesk/bridge-core/errors";
 import { doctor, resolveRuntime } from "../src/doctor.mjs";
 import { runControlPanel } from "../src/control-panel.mjs";
-async function verifiedRuntime() {
-  const runtime = await resolveRuntime();
+async function verifiedRuntime(options = {}) {
+  const runtime = await resolveRuntime(options);
   requireThat((await doctor({ runtime })).status === "ok", "DSH_RUNTIME_UNVERIFIED");
   return runtime;
 }
@@ -29,10 +29,13 @@ await main({
   entry: fileURLToPath(import.meta.url),
   doctor,
   serve: async (state) => {
-    const runtime = await verifiedRuntime();
-    const launch = JSON.parse(
-      await readFile(join(state, "launch.json"), "utf8"),
-    );
+    const launch = JSON.parse(await readFile(join(state, "launch.json"), "utf8"));
+    requireThat(launch.runtimeRoot === undefined || (typeof launch.runtimeRoot === "string" && isAbsolute(launch.runtimeRoot)), "RUNTIME_INSTALL_BINDING_INVALID");
+    const runtime = await verifiedRuntime({ runtimeRoot: launch.runtimeRoot });
+    requireThat(launch.runtimeVersion === undefined || launch.runtimeVersion === runtime.version,
+      "RUNTIME_INSTALL_BINDING_CHANGED");
+    requireThat(launch.runtimeProfile === undefined || launch.runtimeProfile === runtime.profile.id,
+      "RUNTIME_INSTALL_BINDING_CHANGED");
     requireThat(
       /^[a-zA-Z0-9_-]{1,40}$/.test(launch.profile),
       "PROFILE_INVALID",
@@ -126,7 +129,11 @@ await main({
     }
     // Boot the installed native DSH profile in this process. Its Cordis runtime
     // owns the adapter and all lifecycle/dispose handlers; no CLI-output scraping.
-    await import(pathToFileURL(bin).href);
+    const nativeCli = await import(pathToFileURL(bin).href);
+    if (runtime.profile.id === "modern-021") {
+      requireThat(typeof nativeCli.runCli === "function", "NATIVE_CLI_ENTRY_UNAVAILABLE");
+      await nativeCli.runCli();
+    }
   },
   extra: async (command, state, config, o) => {
     if (command === "panel") {
@@ -181,11 +188,9 @@ await main({
           } catch (error) {
             if (error.code !== "ENOENT") throw error;
           }
-          const launch = await prepareProfileInstall(state, {
-            profile,
-            packageSha256,
-            webPort,
-          });
+          const launch = { ...await prepareProfileInstall(state, {
+            profile, packageSha256, webPort,
+          }), runtimeRoot: runtime.root, runtimeVersion: runtime.version, runtimeProfile: runtime.profile.id };
           const profileCache = join(launch.profilePath, "remotedesk-packages");
           await mkdir(profileCache, { recursive: true, mode: 0o700 });
           requireThat(
@@ -216,7 +221,7 @@ await main({
           await new Promise((resolve, reject) => {
             const child = spawn(
               process.execPath,
-              [bin, "plugin", "--profile", profile, "add", nativeSpec],
+              [fileURLToPath(new URL("./native-cli-entry.mjs", import.meta.url)), runtime.root, "plugin", "--profile", profile, "add", nativeSpec],
               {
                 shell: false,
                 stdio: "inherit",

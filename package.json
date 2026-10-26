@@ -1,18 +1,20 @@
 {
   "name": "@remotedesk/dsh-plugin",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22.16.0"
+    "node": ">=22.16.0",
+    "dsh": "0.1.2-rc.1 || 0.2.1-rc.3"
   },
   "exports": {
     ".": "./src/index.mjs",
     "./client": "./lib/client.js"
   },
   "bin": {
-    "remotedesk-dsh": "bin/remotedesk-dsh.mjs"
+    "remotedesk-dsh": "bin/remotedesk-dsh.mjs",
+    "remotedesk-dsh-runtime": "bin/provision-dsh-runtime.mjs"
   },
   "dsh": {
     "bundle": {

@@ -1,10 +1,36 @@
-# 安装与运维：原生版 0.3.0
+# 安装与运维：原生版 0.3.1
 
 ## 准备
 
-核对 README、compatibility.json、SECURITY 和 Release 的 SHA256SUMS。将归档解压到当前用户可写的持久版本目录，例如 `RemoteDesk/dsh/0.3.0`。所有命令从该目录运行。使用普通用户；不要让服务引用临时目录，不以 root/SYSTEM 运行。
+核对 README、compatibility.json、SECURITY 和应用安装指引指定的完整固定源码提交；若另行使用发行资产，再核对其 SHA256SUMS。源码或资产放到当前用户可写的持久版本目录，例如 `RemoteDesk/dsh/0.3.1`。所有命令从该目录运行。使用普通用户；不要让服务引用临时目录，不以 root/SYSTEM 运行。
 
-需要 Node.js 22.16+、OpenSSL 3、DSH **0.1.2-rc.1**、pnpm（CI 固定 11.21.0）。使用宿主原有 provider 配置，不复制/显示密钥，不修改全局模型默认值。`doctor --json` 只验证版本和结构，实际模型调用需单独测试。无需容器、镜像或 Docker daemon。
+需要 Node.js 22.16+、OpenSSL 3、DSH **0.1.2-rc.1 或 0.2.1-rc.3**，pnpm 分别为 11.21.0 / 12.6.0。使用宿主原有 provider 配置，不复制/显示密钥，不修改全局模型默认值。`doctor --json` 只验证版本和结构，实际模型调用需单独测试。无需容器、镜像或 Docker daemon。
+
+## 仅安装 Desktop 时准备独立 CLI
+
+Desktop 内的 app.asar 不作为独立 Node 服务入口，也不要把它填进 runtime root。保留原 Desktop，选择独立的空目录运行：
+
+```sh
+node bin/provision-dsh-runtime.mjs --destination <独立空目录> --profile modern-021
+```
+
+准备命令固定运行时组件与 pnpm，不修改全局安装。已有或非空目录拒绝覆盖；失败保留目录供诊断，不把未验证安装写成成功。完成后得到 JSON 中的 runtimeRoot 和 binDirectory。macOS/Linux 在当前 shell 和持久服务环境中设置：
+
+```sh
+export REMOTEDESK_DSH_RUNTIME_ROOT="<runtimeRoot>"
+export PATH="<binDirectory>:$PATH"
+```
+
+Windows PowerShell 对应：
+
+```powershell
+$env:REMOTEDESK_DSH_RUNTIME_ROOT = "<runtimeRoot>"
+$env:PATH = "<binDirectory>;" + $env:PATH
+```
+
+runtimeRoot 的末尾是 `node_modules/@deepseek-ai/dsh`，该目录内有包名匹配的 package.json；不是其父目录，也不是 dsh.exe/应用目录。已使用旧 CLI 的用户可继续 legacy-012；需要另建旧版精确运行时可将 profile 改成 legacy-012。doctor 会逐项给 expected/actual/missing；排除混装后再 plugin-install。
+
+plugin-install 会把选定运行时的规范路径、版本和合同固定在私有 launch.json；serve 和后台服务使用此记录，不重新按 PATH 选择另一套 CLI。改变运行时须重新 plugin-install，记录失效时拒绝启动。PATH 仍须保留安装工具与 shell 所需命令；只改当前终端不能修正已注册服务。按升级步骤停服、核对未决活动、重新注册持久服务，不同时启动两份桥。新的独立 profile 如缺少模型登录，使用原生授权配置，不复制账号存储或密钥。
 
 ## 初始化和授权项目
 
@@ -23,7 +49,7 @@ node bin/remotedesk-dsh.mjs project-add --state "$STATE" --id demo --path "/abso
 ## 安装原生 DSH bundle
 
 ```sh
-node bin/remotedesk-dsh.mjs plugin-install --state "$STATE" --profile remotedesk --package "/absolute/remotedesk-dsh-plugin-0.3.0.tgz"
+node bin/remotedesk-dsh.mjs plugin-install --state "$STATE" --profile remotedesk --package "/absolute/remotedesk-dsh-plugin-0.3.1.tgz"
 ```
 
 默认建立独立 profile，避免重启正在为你部署的本地 DSH 会话。失败后可用同一 state/profile 重试；安装意图和归档哈希保留在私有 state。包缓存使用固定安全相对路径，支持 Windows 路径中的空格和 `&`。若明确选择已有 web profile，使用 `--profile web --web-port <loopback-port>` 并在其维护窗口重启。保留现有 provider 配置与历史。

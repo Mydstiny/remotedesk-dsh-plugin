@@ -2,6 +2,9 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { resolveRuntime } from "./doctor.mjs";
+import { modernPresetDeclaration } from "./native-preset.mjs";
+import { isDeepStrictEqual } from "node:util";
 
 // Pure file reads and official patch composition. Does not call loadProfile,
 // prepareProfile, --dump-config, healing, initialization, or live roster APIs.
@@ -30,11 +33,12 @@ async function readProfileRows({
     const manifest = JSON.parse(
       await readFile(join(directory, "package.json"), "utf8"),
     );
-    if (typeof manifest.dsh?.bundle?.patch !== "string")
+    const patchFiles = manifest.dsh?.bundle?.patch;
+    const files = typeof patchFiles === "string" ? [patchFiles] : patchFiles;
+    if (!Array.isArray(files) || !files.length || files.some((file) => typeof file !== "string"))
       throw new Error("PROFILE_BUNDLE_PATCH_REQUIRED");
-    layers.push(
-      api.loadOverlayPatches(label, join(directory, manifest.dsh.bundle.patch)),
-    );
+    for (const file of files)
+      layers.push(api.loadOverlayPatches(label, join(directory, file)));
   }
   layers.push(
     api.loadOptionalPatches(
@@ -77,8 +81,11 @@ export async function readEffectivePresetConfig(args) {
 }
 
 export async function readNativeProfileOverlay(args, presetRoot, ownedProfile) {
-  const rows = await readProfileRows(args),
-    config = presetConfig(rows, ownedProfile);
+  const rows = await readProfileRows(args);
+  const runtime = await resolveRuntime({ runtimeRoot: args.runtime });
+  if (runtime.profile.id === "modern-021")
+    return modernProfileOverlay(rows, ownedProfile);
+  const config = presetConfig(rows, ownedProfile);
   // Same host/agent-plane split as the pinned official web composition, without
   // installing a web server. Applied only to our dedicated profile invocation.
   const agentPlane = [
@@ -165,4 +172,37 @@ export function nativePresetOverlay(config, presetRoot) {
       config: { ...config, roots },
     },
   ];
+}
+
+export async function modernProfileOverlay(rows, ownedProfile) {
+  const all = [];
+  const visit = (list) => { for (const row of list) {
+    all.push(row);
+    if (row.group === true && Array.isArray(row.config)) visit(row.config);
+  } };
+  visit(rows);
+  const registries = all.filter((r) => r.name === "@deepseek-ai/dsh-agent-preset-registry");
+  if (registries.length > 1 || registries.some((r) => r.disabled === true))
+    throw new Error("UNIQUE_ACTIVE_AGENT_PRESETS_ROW_REQUIRED");
+  if (!registries.length && !ownedProfile) throw new Error("DSH_NATIVE_PRESET_REGISTRY_REQUIRED");
+  const definition = await modernPresetDeclaration();
+  const collisions = all.filter((r) => r.id === definition.id ||
+    (r.name === definition.name && r.config?.id === definition.config.id));
+  if (collisions.length && (collisions.length !== 1 || !isDeepStrictEqual(collisions[0], definition)))
+    throw new Error("NATIVE_PRESET_SOURCE_MISMATCH");
+  const patches = [];
+  if (ownedProfile) {
+    const agentPlane = new Set(["tool-bash", "tool-pwsh", "tool-jobs", "tool-fs", "tool-fs-search",
+      "tool-str-replace-editor", "skill-filesystem", "tool-skill", "command-goal", "tool-goal",
+      "plan-mode", "compaction-basic", "command-compact", "tool-result-pruner", "tool-subagent-control",
+      "tool-subagent-list-agents", "tool-subagent", "tool-subagent-fork", "workflow-worker-thread",
+      "workflow-ptc", "tool-workflow", "tool-ralph", "agent-instructions", "tool-todo", "tool-web"]);
+    for (const row of all) if (agentPlane.has(row.id)) patches.push({ id: row.id, disabled: true });
+  }
+  const insert = [];
+  if (!registries.length) insert.push({ id: "agent-preset-registry", name: "@deepseek-ai/dsh-agent-preset-registry",
+    config: { default: "remotedesk-native" } });
+  if (!collisions.length) insert.push(definition);
+  if (insert.length) patches.push({ insert });
+  return patches;
 }

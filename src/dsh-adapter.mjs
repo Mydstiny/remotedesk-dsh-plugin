@@ -1,9 +1,9 @@
 import { assertProfile } from "./profile-policy.mjs";
-import { locateRuntime } from "./doctor.mjs";
+import { resolveHostRuntime, assertRuntimeContext } from "./doctor.mjs";
+import { mountModernPreset } from "./native-preset.mjs";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { createRequire } from "node:module";
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -90,9 +90,10 @@ export class DshAdapter {
     network: "host-native",
     processScope: "native-managed-jobs-and-terminals",
   };
-  constructor(ctx, { runtimeRoot, preset = "remotedesk-native" } = {}) {
+  constructor(ctx, { runtimeRoot, runtime, preset = "remotedesk-native" } = {}) {
     this.ctx = ctx;
     this.runtimeRoot = runtimeRoot;
+    this.runtime = runtime;
     this.preset = preset;
     this.handles = new Map();
     this.loading = new Map();
@@ -139,22 +140,18 @@ export class DshAdapter {
         this.ctx.sessionTitle,
       "DSH_NATIVE_SERVICES_REQUIRED",
     );
-    const require = createRequire(
-      join(this.runtimeRoot ?? (await locateRuntime()), "package.json"),
-    );
-    const load = (name) =>
-      import(pathToFileURL(require.resolve("@deepseek-ai/" + name)).href);
-    const [agent, sandbox, approval, presets] = await Promise.all([
-      load("dsh-agent"),
-      load("dsh-sandbox-policy"),
-      load("dsh-user-approval"),
-      load("dsh-agent-presets"),
+    const runtime = this.runtime ??= await resolveHostRuntime(this.ctx, { runtimeRoot: this.runtimeRoot });
+    await assertRuntimeContext(this.ctx, runtime);
+    const load = (name) => runtime.load("@deepseek-ai/" + name);
+    const [agent, sandbox, approval] = await Promise.all([
+      load("dsh-agent"), load("dsh-sandbox-policy"), load("dsh-user-approval"),
     ]);
     this.native = {
       installModelSelection: agent.installModelSelection,
       setSandboxMode: sandbox.setSandboxMode,
       setApprovalPolicy: approval.setApprovalPolicy,
-      standingMountFor: presets.standingMountFor,
+      standingMountFor: runtime.profile.id === "legacy-012" ?
+        (await load("dsh-agent-presets")).standingMountFor : undefined,
     };
   }
   project(s) {
@@ -272,45 +269,42 @@ export class DshAdapter {
     return h && h.agent === agent && this.ctx.agents.get(s.id) === agent;
   }
   setup(s, p, selection, lifecycle) {
-    return async (agentCtx) => {
-      const owner = agentCtx.agent,
+    return async (agentCtx, createdAgent) => {
+      const owner = this.runtime.profile.id === "modern-021" ? createdAgent : agentCtx.agent,
         jobs = this.ctx.jobs;
+      requireThat(owner && owner.ctx === agentCtx, "NATIVE_AGENT_SCOPE_REQUIRED");
       // Scope teardown captures native job outcomes before registry cleanup;
       // normal running jobs retain their native reporting behavior.
       agentCtx.effect(
         () => () => {
           lifecycle.jobs = Promise.allSettled(
             jobs
-              .list(owner)
-              .filter((job) => job.ownerSession === owner.id)
-              .map((job) => jobs.wait(job.id, 10000, owner)),
+              .list(this.jobCaller(owner))
+              .filter((job) => this.jobOwnedBy(job, owner))
+              .map((job) => jobs.wait(job.id, 10000, this.jobCaller(owner))),
           );
           return lifecycle.jobs;
         },
         "RemoteDesk native teardown audit",
       );
-      const preset = await this.ctx.agentPresets.resolve(this.preset);
-      requireThat(
-        (await realpath(preset.path)) ===
-          (await realpath(
-            fileURLToPath(
-              new URL(
-                "../presets/remotedesk-native/agent.cordis.yml",
-                import.meta.url,
-              ),
-            ),
-          )) && preset.trust === "system",
-        "NATIVE_PRESET_SOURCE_MISMATCH",
-      );
-      await this.ctx.agentPresets.mount(agentCtx, this.preset);
+      let mount;
+      if (this.runtime.profile.id === "modern-021") {
+        mount = await mountModernPreset(agentCtx, this.ctx.agentPresets, this.runtime, this.preset);
+      } else {
+        const preset = await this.ctx.agentPresets.resolve(this.preset);
+        requireThat((await realpath(preset.path)) === (await realpath(fileURLToPath(
+          new URL("../presets/remotedesk-native/agent.cordis.yml", import.meta.url)))) &&
+          preset.trust === "system", "NATIVE_PRESET_SOURCE_MISMATCH");
+        await this.ctx.agentPresets.mount(agentCtx, this.preset);
+        mount = this.native.standingMountFor(agentCtx);
+      }
       this.native.setSandboxMode(
-        agentCtx.agent.session,
+        owner.session,
         s.permissionMode ?? "workspace-write",
       );
-      this.native.setApprovalPolicy(agentCtx.agent.session, "ask");
+      this.native.setApprovalPolicy(owner.session, "ask");
       this.native.installModelSelection(agentCtx, selection);
       agentCtx.tools.presentAs("native");
-      const mount = this.native.standingMountFor(agentCtx);
       requireThat(mount, "NATIVE_PRESET_MOUNT_REQUIRED");
       const expected = new Map(
         [...NATIVE_TOOLS].flatMap((name) => {
@@ -322,6 +316,8 @@ export class DshAdapter {
             : [];
         }),
       );
+      // Modern restrictions name inherited capabilities, before owned wrappers.
+      agentCtx.tools.restrict({ allow: [...expected.keys()] });
       const nativeJobList = expected.get("job_list");
       if (nativeJobList) {
         const execute = nativeJobList.execute;
@@ -330,8 +326,8 @@ export class DshAdapter {
           execute: async (args, exec) => {
             const owned = new Set(
               this.ctx.jobs
-                .list(exec.agent)
-                .filter((job) => job.ownerSession === s.id)
+                .list(this.jobCaller(exec.agent))
+                .filter((job) => this.jobOwnedBy(job, exec.agent))
                 .map((job) => job.id),
             );
             return (await execute(args, exec)).filter((job) =>
@@ -341,7 +337,7 @@ export class DshAdapter {
         });
         expected.set(
           "job_list",
-          agentCtx.tools.get("job_list", agentCtx.agent),
+          agentCtx.tools.get("job_list", owner),
         );
       }
       requireThat(
@@ -352,7 +348,6 @@ export class DshAdapter {
       const executors = new Map(
         [...expected].map(([name, definition]) => [name, definition.execute]),
       );
-      agentCtx.tools.restrict({ allow: [...expected.keys()] });
       const accepted = new Set(),
         calls = new Map();
       agentCtx.tools.guard((exec) => {
@@ -365,8 +360,7 @@ export class DshAdapter {
         if (["job_output", "job_kill"].includes(exec.name)) {
           try {
             if (
-              this.ctx.jobs.get(exec.arguments?.job_id, exec.agent)
-                ?.ownerSession !== s.id
+              !this.jobOwnedBy(this.ctx.jobs.get(exec.arguments?.job_id, this.jobCaller(exec.agent)), exec.agent)
             )
               return "REMOTEDESK_JOB_SCOPE_DENIED";
           } catch {
@@ -1027,11 +1021,17 @@ export class DshAdapter {
     await this.ctx.sessions.flush(run.agent.session);
     return { messageId: id };
   }
+  jobCaller(agent) {
+    return this.runtime.profile.id === "modern-021" ? agent.id : agent;
+  }
+  jobOwnedBy(job, agent) {
+    return (this.runtime.profile.id === "modern-021" ? job?.owner : job?.ownerSession) === agent.id;
+  }
   activity(agent) {
     return [
-      ...(this.ctx.jobs?.list(agent) ?? [])
+      ...(this.ctx.jobs?.list(this.jobCaller(agent)) ?? [])
         .filter(
-          (job) => job.ownerSession === agent.id && ACTIVE.has(job.status),
+          (job) => this.jobOwnedBy(job, agent) && ACTIVE.has(job.status),
         )
         .map((job) => ({
           processId: "job:" + job.id,
@@ -1059,8 +1059,8 @@ export class DshAdapter {
     );
     if (processId.startsWith("job:")) {
       const id = processId.slice(4);
-      this.ctx.jobs.kill(id, h.agent, "RemoteDesk stop");
-      const result = await this.ctx.jobs.wait(id, 10000, h.agent);
+      this.ctx.jobs.kill(id, this.jobCaller(h.agent), "RemoteDesk stop");
+      const result = await this.ctx.jobs.wait(id, 10000, this.jobCaller(h.agent));
       requireThat(
         result && !ACTIVE.has(result.status) && result.status !== "failed",
         "TERMINAL_STOP_UNCONFIRMED",
@@ -1173,8 +1173,14 @@ export class DshAdapter {
         if (run?.maintenance) await run.maintenance.catch(() => {});
         if (run?.done) await run.done;
         const expected = h.agent.session.snapshotEvents();
-        // readFrom joins native retirement persistence before reading disk.
-        const stored = await persistence.readFrom(h.agent.id, 0);
+        // Native handle disposal joins the writer's durability barrier. Modern
+        // persistence uses an explicit read-only handle; it never claims write.
+        let stored;
+        if (this.runtime.profile.id === "modern-021") {
+          const reader = await persistence.open(h.agent.session.id, "read");
+          try { stored = await reader.read(); }
+          finally { await reader.close(); }
+        } else stored = await persistence.readFrom(h.agent.id, 0);
         requireThat(
           isDeepStrictEqual(stored.events, expected),
           "NATIVE_SESSION_PERSISTENCE_UNCONFIRMED",
@@ -1192,10 +1198,10 @@ export class DshAdapter {
         );
         requireThat(
           !jobs
-            .list(h.agent)
+            .list(this.jobCaller(h.agent))
             .some(
               (job) =>
-                job.ownerSession === h.agent.id && ACTIVE.has(job.status),
+                this.jobOwnedBy(job, h.agent) && ACTIVE.has(job.status),
             ) && !terminals?.hasOwnerActivity(h.agent),
           "TERMINAL_STOP_UNCONFIRMED",
         );

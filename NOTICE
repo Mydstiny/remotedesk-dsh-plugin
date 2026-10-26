@@ -1,4 +1,4 @@
-RemoteDesk DSH Plugin 0.3.0
+RemoteDesk DSH Plugin 0.3.1
 Original integration, protocol, reference client and bridge code: Copyright 2026 Mydstiny, MIT.
 Upstream engines, Node.js and OpenSSL are externally installed; their binaries are not redistributed.
 Bundled bridge-core is original MIT code from Mydstiny/remotedesk-codex-plugin.
